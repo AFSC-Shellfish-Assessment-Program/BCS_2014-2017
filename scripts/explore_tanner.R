@@ -167,3 +167,64 @@ mod <- mgcv::gam(proportion.positive ~ Year + s(julian, k = 4) + s(size, k = 4),
 summary(mod)
 
 plot(mod)
+
+## have a go at fitting simple models in brms -----------------------------------
+library(plyr)
+library(rstan)
+library(brms)
+library(bayesplot)
+source("./scripts/stan_utils.R")
+
+## note that seasonal time of sampling is correlated with space (South to North)
+
+## fit an initial model with index identity, year, size as covariates (and year/index/station as random term)
+
+# clean up data again!
+
+tanner.dat <- dat %>%
+  dplyr::select(PCR_result, Size, index, Year, STATIONID) %>%
+  dplyr::rename(pcr = PCR_result, size = Size, year = Year, station = STATIONID) %>%
+  dplyr::mutate(year = as.factor(year),
+                index = as.factor(index),
+                station = as.factor(station)) %>%
+  na.omit()
+
+## define model formula
+tanner1_formula <-  bf(pcr ~ s(size, k = 3) + index + year + (1 | year/index/station))
+                       
+## Set model family
+family <- bernoulli(link = "logit")
+
+
+## Show default priors
+get_prior(tanner1_formula, tanner.dat, family = family)
+
+## fit binomial mode --------------------------------------
+tanner1_bernoulli <- brm(tanner1_formula,
+                    data = tanner.dat,
+                    family = family,
+                    cores = 4, chains = 4, iter = 3000,
+                    save_pars = save_pars(all = TRUE),
+                    control = list(adapt_delta = 0.99, max_treedepth = 10))
+
+# cod0_zinb_k3  <- add_criterion(cod0_zinb_k3, c("loo", "bayes_R2"),
+                               # moment_match = TRUE)
+saveRDS(tanner1_bernoulli, file = "./output/tanner1_bernoulli.rds")
+
+tanner1_bernoulli <- readRDS("./output/tanner1_bernoulli.rds")
+check_hmc_diagnostics(tanner1_bernoulli$fit)
+neff_lowest(tanner1_bernoulli$fit)
+rhat_highest(tanner1_bernoulli$fit)
+summary(tanner1_bernoulli)
+bayes_R2(tanner1_bernoulli)
+plot(tanner1_bernoulli$criteria$loo, "k")
+plot(conditional_smooths(tanner1_bernoulli), ask = FALSE)
+y <- cod.data$cod
+yrep_tanner1_bernoulli  <- fitted(tanner1_bernoulli, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_tanner1_bernoulli[sample(nrow(yrep_tanner1_bernoulli), 25), ]) +
+  xlim(0, 500) +
+  ggtitle("tanner1_bernoulli")
+pdf("./figs/trace_tanner1_bernoulli.pdf", width = 6, height = 4)
+trace_plot(tanner1_bernoulli$fit)
+dev.off()
+
