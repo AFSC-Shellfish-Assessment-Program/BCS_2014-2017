@@ -24,9 +24,6 @@ str(dat)
 substr(dat$Specific_Location,10,10)
 dat$index = as.numeric(substr(dat$Specific_Location,10,10))
 
-#check for some Specific_Location not in index sites
-str(dat)
-
 #it appears there are some crabs from outside index areas?
 unique(dat$index)
 idxs = is.na(dat$index)
@@ -45,20 +42,13 @@ sum(idxs) # only one
 dat=dat[!idxs,]
 
 
-#taking out clutches larger then 0.
-unique(dat$Clutch)
-
-# check abundance 
+# check clutch codes 
 check <- dat %>%
   group_by(Species_Name, Clutch) %>%
   summarise(count = n())
 
 check # that's a lot of data to throw away!
 
-# not running this for now
-# idxs=which(dat$Clutch>0)
-# dat=dat[-idxs,]
-# str(dat)
 
 # select bairdi for analysis
 
@@ -66,21 +56,7 @@ bairdi <- dat %>%
   filter(Species_Name == "Chionoecetes bairdi",
          index %in% c(1, 2, 3))
 
-bairdi=aa[aa$Species_Name=="Chionoecetes bairdi",]
-bairdi=bairdi[which(bairdi$index==1|bairdi$index==2|bairdi$index==3),]
-opilio=aa[aa$Species_Name=="Chionoecetes opilio",]
-opilio=opilio[which(opilio$index==4|opilio$index==5|opilio$index==6),]
-bairdi$PCR_result
-str(bairdi)
-
-# bcpue=read.csv("cpue_bairdi.csv")
-# bcpue=bcpue[,c(1,2,4,9,10)]
-# str(bcpue)
-# bairdi=merge(bairdi,bcpue)
-# ocpue=read.csv("cpue_opilio.csv")
-# ocpue=ocpue[,c(1,2,4,9,10)]
-# str(ocpue)
-# opilio=merge(opilio,ocpue)
+bairdi$index <- as.factor(bairdi$index)
 
 # examine sample size by index / year
 
@@ -101,7 +77,7 @@ ggsave("./figs/bairdi_index_year_incidence.png", width = 6, height = 6, units = 
 # plot surface temp - bottom temp relationship
 ggplot(bairdi, aes(SURFACE_TEMP, Bottom_Temp)) +
   geom_point() +
-  geom_smooth(method = "gam", formula = y ~ s(x, k = 3), SE = F) +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = F) +
   geom_point(aes(SURFACE_TEMP, Bottom_Temp, color = index))
 
 ggsave("./figs/bairdi_surface_temp_bottom_temp.png", width = 6, height = 4, units = "in")
@@ -121,28 +97,29 @@ plot <- bairdi %>%
                    julian = mean(julian)) 
 
 
-ggplot(plot, aes(surface)) +
-  geom_histogram(bins = 12, fill = "dark grey") +
+ggplot(plot, aes(bottom)) +
+  geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(Year ~ index)
 
-ggplot(plot, aes(bottom)) +
-  geom_histogram(bins = 12, fill = "dark grey") +
-  facet_grid(Year ~ index)
+ggsave("./figs/bairdi_bottom_temp_by_index.png", width = 5, height = 4, units = "in")
 
 ggplot(plot, aes(depth)) +
-  geom_histogram(bins = 12, fill = "dark grey") +
+  geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(Year ~ index)
 
+ggsave("./figs/bairdi_depth_by_index.png", width = 5, height = 4, units = "in")
+
 ggplot(plot, aes(julian)) +
-  geom_histogram(bins = 12, fill = "dark grey") +
+  geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(Year ~ index) # big differences among index areas
 
-ggplot(plot, aes(julian)) +
-  geom_histogram(bins = 12, fill = "dark grey") +
-  facet_grid(Year ~ index)
+ggsave("./figs/bairdi_date_by_index.png", width = 5, height = 4, units = "in")
 
 ggplot(plot, aes(julian, bottom)) +
   geom_point() # this is a big problem - julian day is collinear with temperature
+
+ggsave("./figs/bairdi_date_vs_bottom_temp.png", width = 6, height = 4, units = "in")
+
 
 # look at Julian day as a predictor of % positive
 plot <- bairdi %>%
@@ -156,6 +133,9 @@ ggplot(plot, aes(julian, proportion.positive)) +
   facet_wrap(~Year) +
   geom_smooth(method = "gam")
 
+ggsave("./figs/bairdi_date_vs_percent_positive.png", width = 6, height = 4, units = "in")
+
+
 # and size as a predictor of % positive
 plot <- bairdi %>%
   dplyr::group_by(Year, STATIONID) %>%
@@ -167,6 +147,9 @@ ggplot(plot, aes(size, proportion.positive)) +
   geom_point() + 
   facet_wrap(~Year) +
   geom_smooth(method = "gam")
+
+ggsave("./figs/bairdi_size_vs_percent_positive.png", width = 6, height = 4, units = "in")
+
 
 # make a toy model with julian day, size, and year as predictors
 
