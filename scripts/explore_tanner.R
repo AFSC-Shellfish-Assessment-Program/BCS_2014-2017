@@ -395,6 +395,16 @@ yrep_tanner4_hier_bernoulli  <- fitted(tanner4_hier_bernoulli, scale = "response
 ppc_dens_overlay(y = y, yrep = yrep_tanner4_hier_bernoulli[sample(nrow(yrep_tanner4_hier_bernoulli), 25), ]) +
   ggtitle("tanner4_hier_bernoulli")
 
+ggsave("./figs/tanner_4_bernoulli_ppc_overlay.png", width = 5, height = 4, units = 'in')
+
+# and trace plot
+png("./figs/trace_tanner4_hier_bernoulli.png", width = 6, height = 4, units = 'in', res = 300)
+trace_plot(tanner4_hier_bernoulli$fit)
+dev.off()
+
+
+
+
 tanner1_bernoulli <- readRDS("./output/tanner1_bernoulli.rds")
 tanner1_hier_bernoulli <- readRDS("./output/tanner1_hier_bernoulli.rds")
 tanner2_hier_bernoulli <- readRDS("./output/tanner2_hier_bernoulli.rds")
