@@ -151,6 +151,19 @@ ggplot(plot, aes(size, proportion.positive)) +
 
 ggsave("./figs/opilio_size_vs_percent_positive.png", width = 6, height = 4, units = "in")
 
+# and size distribution by index / year
+
+ggplot(opilio, aes(Size)) +
+  geom_histogram(bins = 30, fill = "grey", color = "black") +
+  facet_grid(Year ~ index)
+
+
+plot <- opilio %>%
+  dplyr::group_by(Year, index) %>%
+  dplyr::summarise(size = mean(Size), 
+                   n = dplyr::n(),
+                   proportion.positive = sum(PCR_result == 1) / dplyr::n())
+
 
 # make a toy model with julian day, size, and year as predictors
 
