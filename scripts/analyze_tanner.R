@@ -5,7 +5,15 @@ library(plyr)
 library(rstan)
 library(brms)
 library(bayesplot)
+library(MARSS)
 source("./scripts/stan_utils.R")
+
+# set plot theme
+theme_set(theme_bw())
+
+# colorblind palette
+cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
+
 
 # load PCR data for each year
 d1=read.csv("./data/bcs14.csv")
@@ -23,22 +31,19 @@ name.check # so names are interchangeable, just some formatting differences
 names(d2) <- names(d3) <- names(d1)
 dat = rbind(d1, d2, d3) 
 
+# add julian date
 
-## have a go at fitting simple models in brms -----------------------------------
-
-## note that seasonal time of sampling is correlated with space (South to North)
-
-## fit an initial model with index identity, year, size as covariates (and year/index/station as random term)
-
-# clean up data again!
-
-# and, based on conversation, we'll drop 2014, drop any data without sex and maturity data
-
-# start by defining julian day
 dat$date <- stringr::str_split_fixed(dat$START_TIME, " ", n = 2)[,1] # remove time, keep date
 
 dat$julian <- lubridate::yday(chron::dates(dat$date))
 
+# add index column
+
+substr(dat$Specific_Location,10,10)
+
+dat$index = as.numeric(substr(dat$Specific_Location,10,10))
+
+# separate Tanner data
 tanner.dat <- dat %>%
   dplyr::filter(Species_Name == "Chionoecetes bairdi",
                 index %in% c(1, 2, 3),
@@ -49,29 +54,61 @@ tanner.dat <- dat %>%
                 size = Size,
                 sex = Sex,
                 year = Year,
-                station = STATIONID) %>%
+                station = STATIONID,
+                longitude = START_LONGITUDE,
+                depth = BOTTOM_DEPTH,
+                temperature = Bottom_Temp) %>%
   dplyr::mutate(year = as.factor(year),
                 sex = as.factor(sex),
                 index = as.factor(index),
-                station = as.factor(station)) %>%
-  na.omit()
+                station = as.factor(station)) 
 
-nrow(tanner.dat) # 685 samples!
+nrow(tanner.dat) # 886 samples!
 
-# some more exploratory plots
-plot <- tanner.dat %>%
-  dplyr::select(maturity, pcr) %>%
-  pivot_longer(cols = -maturity) %>%
-  dplyr::group_by(maturity, name, value) %>%
-  dplyr::summarise(count = n())
+# need dimension reduction for exogenous covariates (day, depth, longitude, temperature)
 
-ggplot(plot, aes(as.factor(value), count)) +
-  geom_bar(stat = "identity", fill = "grey", color = "black") +
-  facet_wrap(~maturity) +
-  ggtitle("2015-16") # so there is definitely a maturity effect
+pca.dat <- tanner.dat %>%
+  dplyr::group_by(station, year) %>%
+  dplyr::summarise(julian = mean(julian),
+                   depth = mean(depth),
+                   longitude = -mean(longitude),
+                   temperature = mean(temperature))
+
+cor(pca.dat[,3:6])
+
+# plot - for the paper?
+plot <- data.frame(Day_of_year = pca.dat$julian,
+                   'Depth_m' = pca.dat$depth,
+                   'W_longitude' = pca.dat$longitude,
+                   'Bottom_temperature_C' = pca.dat$temperature,
+                   year = as.numeric(as.character(pca.dat$year))) %>%
+  tidyr::pivot_longer(cols = c(-Day_of_year, -year))
+  
+ggplot(plot, aes(Day_of_year, value)) +
+  geom_point(color = "grey100") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = F, color = "black", lwd = 0.3) +
+  facet_wrap(~name, scales = "free_y", ncol = 1) +
+  geom_point(aes(color = as.factor(year))) +
+  scale_color_manual(values = cb[c(2,4)]) +
+  theme(legend.title = element_blank())
+
+ggsave("./figs/tanner_julian_temp_depth_long.png", width = 5, height = 6, units = 'in')
+
+# DFA is hard here b/c we want to include time as one of the time series, *and* we don't have continuous observations for DFA
+
+# could just fit a PCA!
+PCA <- prcomp(dfa.dat[,3:6], scale = T, center = T)
+PCA$rotation
+PCA$x
+pca.dat$pc1 <- PCA$x[,1]
+
+# and join pc1 back in
+tanner.dat <- left_join(tanner.dat, pca.dat)
+
 
 ## define model formula
 tanner1_formula <-  bf(pcr ~ sex + maturity + index + year) # simple first model
+
 
 tanner1.hier_formula <-  bf(pcr ~ sex + maturity + index + year + (1 | year/index/station)) # and hierarchical version of same                       
 
