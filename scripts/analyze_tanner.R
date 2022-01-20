@@ -20,7 +20,13 @@ dat <- read.csv("./data/pcr_haul_master.csv")
 
 # add julian date
 dat$julian = lubridate::yday(lubridate::parse_date_time(x = dat$start_date, orders="mdy", tz="US/Alaska"))                                
-                                    
+
+# examine cpue distribution                                    
+ggplot(dat, aes(tanner70under_cpue)) +
+  geom_histogram(bins = 30, fill = "grey", color = "black")
+
+ggplot(dat, aes(tanner70under_cpue^0.25)) +
+  geom_histogram(bins = 30, fill = "grey", color = "black")
 
 # separate Tanner data
 tanner.dat <- dat %>%
@@ -29,36 +35,40 @@ tanner.dat <- dat %>%
                 year %in% c(2015:2017),
                 sex %in% c(1, 2),
                 pcr_result %in% c(1, 0)) %>%
-  dplyr::select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_longitude, bottom_depth, gear_temperature) %>%
+  dplyr::select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_longitude, bottom_depth, gear_temperature, tanner70under_cpue) %>%
   dplyr::rename(pcr = pcr_result,
                 station = gis_station,
                 longitude = mid_longitude,
                 depth = bottom_depth,
                 temperature = gear_temperature,
-                index = index_site) %>%
+                index = index_site,
+                fourth.root.cpue70 = tanner70under_cpue) %>%
   dplyr::mutate(year = as.factor(year),
                 sex = as.factor(sex),
                 index = as.factor(index),
-                station = as.factor(station)) 
+                station = as.factor(station),
+                fourth.root.cpue70 = fourth.root.cpue70^0.25) # transforming cpue here
 
 nrow(tanner.dat) # 1285 samples!
 
-# need dimension reduction for exogenous covariates (day, depth, longitude, temperature)
+# need dimension reduction for exogenous covariates (day, depth, longitude, temperature, cpue)
 
 pca.dat <- tanner.dat %>%
   dplyr::group_by(station, year) %>%
   dplyr::summarise(julian = mean(julian),
                    depth = mean(depth),
                    longitude = -mean(longitude),
-                   temperature = mean(temperature))
+                   temperature = mean(temperature),
+                   fourth.root.cpue70 = mean(fourth.root.cpue70))
 
-cor(pca.dat[,3:6]) # temp no longer correlated with others! 
+cor(pca.dat[,3:7]) # temp no longer correlated with others! # cpue weakly collinear with depth
 
 # plot - for the paper?
 plot <- data.frame(Day_of_year = pca.dat$julian,
-                   'Depth_m' = pca.dat$depth,
-                   'W_longitude' = pca.dat$longitude,
-                   'Bottom_temperature_C' = pca.dat$temperature,
+                   Depth_m = pca.dat$depth,
+                   W_longitude = pca.dat$longitude,
+                   Bottom_temperature_C = pca.dat$temperature,
+                   Fourth_root_CPUE_70 = pca.dat$fourth.root.cpue70,
                    year = as.numeric(as.character(pca.dat$year))) %>%
   tidyr::pivot_longer(cols = c(-Day_of_year, -year))
   
@@ -70,7 +80,7 @@ ggplot(plot, aes(Day_of_year, value)) +
   scale_color_manual(values = cb[c(2,4,6)]) +
   theme(legend.title = element_blank())
 
-ggsave("./figs/tanner_julian_temp_depth_long.png", width = 5, height = 6, units = 'in')
+ggsave("./figs/tanner_julian_temp_depth_long.png", width = 4.5, height = 7.5, units = 'in')
 
 # DFA is hard here b/c we want to include time as one of the time series, *and* we don't have continuous observations for DFA
 
@@ -159,6 +169,7 @@ loo(tanner1, tanner2) # temp does not improve prediction
 
 # loo(tanner1, tanner2, moment_match = T) # moment matching crashes - need to try updating R / packages
 
+###############################################################################################
 # see if a sex effect improves model
 
 tanner3_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex + (1 | year/index/station))                      
@@ -198,41 +209,41 @@ loo(tanner1, tanner2, tanner3)
 
 # finally, check for a year effect
 
-tanner4_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station))                      
+tanner5_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station))                      
 
-tanner4 <- brm(tanner4_formula,
+tanner5 <- brm(tanner5_formula,
                data = tanner.dat,
                family =bernoulli(link = "logit"),
                cores = 4, chains = 4, iter = 5000, # increasing iterations - can reduce to 4000 for re-runs
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-# tanner4  <- add_criterion(tanner4, "loo",
+# tanner5  <- add_criterion(tanner5, "loo",
 #                                          moment_match = TRUE)
 
-saveRDS(tanner4, file = "./output/tanner4.rds")
+saveRDS(tanner5, file = "./output/tanner5.rds")
 
-tanner4 <- readRDS("./output/tanner4.rds")
+tanner5 <- readRDS("./output/tanner5.rds")
 
-check_hmc_diagnostics(tanner4$fit)
-neff_lowest(tanner4$fit) # too low!
-rhat_highest(tanner4$fit)
-summary(tanner4) # no evidence of a year effect
-bayes_R2(tanner4)
-# plot(tanner4$criteria$loo, "k")
+check_hmc_diagnostics(tanner5$fit)
+neff_lowest(tanner5$fit) # too low!
+rhat_highest(tanner5$fit)
+summary(tanner5) # no evidence of a year effect
+bayes_R2(tanner5)
+# plot(tanner5$criteria$loo, "k")
 
 # posterior predictive test
 
 y <- tanner.dat$pcr
-yrep_tanner4  <- fitted(tanner4, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_tanner4[sample(nrow(yrep_tanner4), 25), ]) +
-  ggtitle("tanner4")
+yrep_tanner5  <- fitted(tanner5, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_tanner5[sample(nrow(yrep_tanner5), 25), ]) +
+  ggtitle("tanner5")
 
-# png("./figs/trace_tanner4.png", width = 6, height = 4, units = 'in', res = 300)
-trace_plot(tanner4$fit)
+# png("./figs/trace_tanner5.png", width = 6, height = 4, units = 'in', res = 300)
+trace_plot(tanner5$fit)
 # dev.off()
 
-loo(tanner1, tanner2, tanner3, tanner4) # tanner4 marginally the best!
+loo(tanner1, tanner2, tanner3, tanner5) # tanner5 marginally the best!
 
 
 
