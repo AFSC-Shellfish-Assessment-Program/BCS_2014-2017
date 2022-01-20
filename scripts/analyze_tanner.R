@@ -99,7 +99,9 @@ tanner.dat <- left_join(tanner.dat, pc1)
 ## define model formula
 tanner1_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + (1 | year/index/station)) # simple first model
 
+# consider random slopes??
 ## Show default priors
+
 get_prior(tanner1_formula, tanner.dat, family = bernoulli(link = "logit"))
 
 ## fit binomial mode --------------------------------------
@@ -243,7 +245,7 @@ ppc_dens_overlay(y = y, yrep = yrep_tanner4[sample(nrow(yrep_tanner4), 25), ]) +
 # still poor
 
 # let's run the model comparison
-loo(tanner1, tanner2, tanner4)
+loo(tanner1, tanner2, tanner3, tanner4)
 
 ######################################################
 # finally, check for a year effect
@@ -282,7 +284,44 @@ ppc_dens_overlay(y = y, yrep = yrep_tanner5[sample(nrow(yrep_tanner5), 25), ]) +
 trace_plot(tanner5$fit)
 # dev.off()
 
-loo(tanner1, tanner2, tanner3, tanner5) # tanner5 marginally the best!
+loo(tanner1, tanner2, tanner3, tanner4, tanner5) # tanner5 marginally the best!
+
+########
+tanner6_formula <-  bf(pcr ~ s(size, k = 4) + station + (1 | year/index/station))                      
+
+tanner6 <- brm(tanner6_formula,
+               data = tanner.dat,
+               family = bernoulli(link = "logit"),
+               cores = 4, chains = 4, iter = 4000, # increasing iterations 
+               save_pars = save_pars(all = TRUE),
+               control = list(adapt_delta = 0.999, max_treedepth = 14))
+
+# tanner6  <- add_criterion(tanner6, "loo",
+#                                          moment_match = TRUE)
+
+saveRDS(tanner6, file = "./output/tanner6.rds")
+
+tanner6 <- readRDS("./output/tanner6.rds")
+
+check_hmc_diagnostics(tanner6$fit)
+neff_lowest(tanner6$fit) # too low!
+rhat_highest(tanner6$fit)
+summary(tanner6) # no evidence of a year effect
+bayes_R2(tanner6)
+# plot(tanner6$criteria$loo, "k")
+
+# posterior predictive test
+
+y <- tanner.dat$pcr
+yrep_tanner5  <- fitted(tanner5, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_tanner5[sample(nrow(yrep_tanner5), 25), ]) +
+  ggtitle("tanner5")
+
+# png("./figs/trace_tanner5.png", width = 6, height = 4, units = 'in', res = 300)
+trace_plot(tanner5$fit)
+# dev.off()
+
+loo(tanner1, tanner2, tanner3, tanner4, tanner5) # tanner5 marginally the best!
 
 
 tanner1_formula <-  bf(pcr ~ sex + maturity + index + year) # simple first model
@@ -328,13 +367,13 @@ ggplot(plot, aes(year, estimate__)) +
 # then size
 
 ## 95% CI
-ce1s_1 <- conditional_effects(tanner5, effect = "size", re_formula = NA,
+ce1s_1 <- conditional_effects(tanner1, effect = "size", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(tanner5, effect = "size", re_formula = NA,
+ce1s_2 <- conditional_effects(tanner1, effect = "size", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(tanner5, effect = "size", re_formula = NA,
+ce1s_3 <- conditional_effects(tanner1, effect = "size", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$size
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -351,20 +390,20 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
   labs(x = "Carapace width (mm)", y = "Probability positive") +
-  ggtitle("Tanner5 - posterior mean & 80 / 90 / 95% credible intervals")
+  ggtitle("tanner1 - posterior mean & 80 / 90 / 95% credible intervals")
 
-ggsave("./figs/tanner5_size_effect.png", width = 6, height = 4, units = 'in')
+ggsave("./figs/tanner1_size_effect.png", width = 6, height = 4, units = 'in')
 
 ## finally, pc1 (day of year, depth, longitude)
 
 ## 95% CI
-ce1s_1 <- conditional_effects(tanner5, effect = "pc1", re_formula = NA,
+ce1s_1 <- conditional_effects(tanner1, effect = "pc1", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(tanner5, effect = "pc1", re_formula = NA,
+ce1s_2 <- conditional_effects(tanner1, effect = "pc1", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(tanner5, effect = "pc1", re_formula = NA,
+ce1s_3 <- conditional_effects(tanner1, effect = "pc1", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$pc1
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -381,6 +420,6 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
   labs(x = "PC1 (day of year, depth, longitude)", y = "Probability positive") +
-  ggtitle("Tanner5 - posterior mean & 80 / 90 / 95% credible intervals")
+  ggtitle("tanner1 - posterior mean & 80 / 90 / 95% credible intervals")
 
-ggsave("./figs/tanner5_pc1_effect.png", width = 6, height = 4, units = 'in')
+ggsave("./figs/tanner1_pc1_effect.png", width = 6, height = 4, units = 'in')
