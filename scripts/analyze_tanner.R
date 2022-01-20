@@ -80,7 +80,7 @@ ggplot(plot, aes(Day_of_year, value)) +
   scale_color_manual(values = cb[c(2,4,6)]) +
   theme(legend.title = element_blank())
 
-ggsave("./figs/tanner_julian_temp_depth_long.png", width = 4.5, height = 7.5, units = 'in')
+ggsave("./figs/tanner_julian_temp_depth_long_cpue.png", width = 4.5, height = 7.5, units = 'in')
 
 # DFA is hard here b/c we want to include time as one of the time series, *and* we don't have continuous observations for DFA
 
@@ -170,6 +170,42 @@ loo(tanner1, tanner2) # temp does not improve prediction
 # loo(tanner1, tanner2, moment_match = T) # moment matching crashes - need to try updating R / packages
 
 ###############################################################################################
+# examine cpue effect
+
+tanner3_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index/station))                      
+
+tanner3 <- brm(tanner3_formula,
+               data = tanner.dat,
+               family = bernoulli(link = "logit"),
+               cores = 4, chains = 4, iter = 2500,
+               save_pars = save_pars(all = TRUE),
+               control = list(adapt_delta = 0.999, max_treedepth = 14))
+
+# tanner3  <- add_criterion(tanner3, "loo",
+#                                          moment_match = TRUE)
+
+saveRDS(tanner3, file = "./output/tanner3.rds")
+
+tanner3 <- readRDS("./output/tanner3.rds")
+
+check_hmc_diagnostics(tanner3$fit)
+neff_lowest(tanner3$fit)
+rhat_highest(tanner3$fit)
+summary(tanner3) # no evidence of a sex effect
+bayes_R2(tanner3)
+# plot(tanner3$criteria$loo, "k")
+
+# posterior predictive test
+
+y <- tanner.dat$pcr
+yrep_tanner3  <- fitted(tanner3, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_tanner3[sample(nrow(yrep_tanner3), 25), ]) +
+  ggtitle("tanner3")
+
+# let's run the model comparison
+loo(tanner1, tanner2, tanner3) # tanner1 is best, tanner2 very close - abundance does not help model (tanner3)
+
+###############################################################################################
 # see if a sex effect improves model
 
 tanner4_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex + (1 | year/index/station))                      
@@ -207,6 +243,7 @@ ppc_dens_overlay(y = y, yrep = yrep_tanner4[sample(nrow(yrep_tanner4), 25), ]) +
 # let's run the model comparison
 loo(tanner1, tanner2, tanner4)
 
+######################################################
 # finally, check for a year effect
 
 tanner5_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station))                      
