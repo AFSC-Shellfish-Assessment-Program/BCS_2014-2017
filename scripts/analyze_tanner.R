@@ -195,6 +195,8 @@ summary(tanner3) # no evidence of a sex effect
 bayes_R2(tanner3)
 # plot(tanner3$criteria$loo, "k")
 
+plot(conditional_smooths(tanner3), ask = FALSE)
+
 # posterior predictive test
 
 y <- tanner.dat$pcr
