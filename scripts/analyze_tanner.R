@@ -285,8 +285,6 @@ trace_plot(tanner5$fit)
 loo(tanner1, tanner2, tanner3, tanner5) # tanner5 marginally the best!
 
 
-
-
 tanner1_formula <-  bf(pcr ~ sex + maturity + index + year) # simple first model
 tanner1.hier_formula <-  bf(pcr ~ sex + maturity + index + year + (1 | year/index/station)) # and hierarchical version of same                       
 tanner2.hier_formula <-  bf(pcr ~ sex + maturity + index + (1 | year/index/station)) # and hierarchical version of same                       
@@ -307,3 +305,82 @@ forms <- data.frame(formula=c(as.character(tanner4.hier_formula)[1],
 
 comp.out <- cbind(forms, model.comp$diffs[,1:2])
 write.csv(comp.out, "./output/growth_model_comp.csv")
+
+###########################
+# plot predicted effects from best model (tanner5)
+tanner5 <- readRDS("./output/tanner5.rds")
+
+# first year
+ce1s_1 <- conditional_effects(tanner5, effect = "year", re_formula = NA,
+                              probs = c(0.025, 0.975))  
+
+plot <- ce1s_1$year %>%
+  dplyr::select(year, estimate__, lower__, upper__)
+
+plot$far_fac <- reorder(plot$far_fac, desc(plot$far_fac))
+
+ggplot(plot, aes(year, estimate__)) +
+  geom_point(size=3) +
+  geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
+  ylab("Probability positive") +
+  ggtitle("Tanner5 - posterior mean & 95% credible interval")
+
+# then size
+
+## 95% CI
+ce1s_1 <- conditional_effects(tanner5, effect = "size", re_formula = NA,
+                              probs = c(0.025, 0.975))
+## 90% CI
+ce1s_2 <- conditional_effects(tanner5, effect = "size", re_formula = NA,
+                              probs = c(0.05, 0.95))
+## 80% CI
+ce1s_3 <- conditional_effects(tanner5, effect = "size", re_formula = NA,
+                              probs = c(0.1, 0.9))
+dat_ce <- ce1s_1$size
+dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
+dat_ce[["lower_95"]] <- dat_ce[["lower__"]]
+dat_ce[["upper_90"]] <- ce1s_2$size[["upper__"]]
+dat_ce[["lower_90"]] <- ce1s_2$size[["lower__"]]
+dat_ce[["upper_80"]] <- ce1s_3$size[["upper__"]]
+dat_ce[["lower_80"]] <- ce1s_3$size[["lower__"]]
+
+ggplot(dat_ce) +
+  aes(x = effect1__, y = estimate__) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
+  geom_line(size = 1, color = "red3") +
+  labs(x = "Carapace width (mm)", y = "Probability positive") +
+  ggtitle("Tanner5 - posterior mean & 80 / 90 / 95% credible intervals")
+
+ggsave("./figs/tanner5_size_effect.png", width = 6, height = 4, units = 'in')
+
+## finally, pc1 (day of year, depth, longitude)
+
+## 95% CI
+ce1s_1 <- conditional_effects(tanner5, effect = "pc1", re_formula = NA,
+                              probs = c(0.025, 0.975))
+## 90% CI
+ce1s_2 <- conditional_effects(tanner5, effect = "pc1", re_formula = NA,
+                              probs = c(0.05, 0.95))
+## 80% CI
+ce1s_3 <- conditional_effects(tanner5, effect = "pc1", re_formula = NA,
+                              probs = c(0.1, 0.9))
+dat_ce <- ce1s_1$pc1
+dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
+dat_ce[["lower_95"]] <- dat_ce[["lower__"]]
+dat_ce[["upper_90"]] <- ce1s_2$pc1[["upper__"]]
+dat_ce[["lower_90"]] <- ce1s_2$pc1[["lower__"]]
+dat_ce[["upper_80"]] <- ce1s_3$pc1[["upper__"]]
+dat_ce[["lower_80"]] <- ce1s_3$pc1[["lower__"]]
+
+ggplot(dat_ce) +
+  aes(x = effect1__, y = estimate__) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
+  geom_line(size = 1, color = "red3") +
+  labs(x = "PC1 (day of year, depth, longitude)", y = "Probability positive") +
+  ggtitle("Tanner5 - posterior mean & 80 / 90 / 95% credible intervals")
+
+ggsave("./figs/tanner5_pc1_effect.png", width = 6, height = 4, units = 'in')
