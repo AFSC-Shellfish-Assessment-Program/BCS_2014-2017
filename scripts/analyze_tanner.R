@@ -15,55 +15,33 @@ theme_set(theme_bw())
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
 
 
-# load PCR data for each year
-d1=read.csv("./data/bcs14.csv")
-d2=read.csv("./data/bcs15.csv")
-d3=read.csv("./data/bcs16.csv") 
-
-names(d1); names(d2); names(d3)
-
-name.check <- data.frame(names1 = names(d1),
-                         names2 = names(d2),
-                         names3 = names(d3))
-
-name.check # so names are interchangeable, just some formatting differences
-
-names(d2) <- names(d3) <- names(d1)
-dat = rbind(d1, d2, d3) 
+# load PCR data 
+dat <- read.csv("./data/pcr_haul_master.csv")
 
 # add julian date
-
-dat$date <- stringr::str_split_fixed(dat$START_TIME, " ", n = 2)[,1] # remove time, keep date
-
-dat$julian <- lubridate::yday(chron::dates(dat$date))
-
-# add index column
-
-substr(dat$Specific_Location,10,10)
-
-dat$index = as.numeric(substr(dat$Specific_Location,10,10))
+dat$julian = lubridate::yday(lubridate::parse_date_time(x = dat$start_date, orders="mdy", tz="US/Alaska"))                                
+                                    
 
 # separate Tanner data
 tanner.dat <- dat %>%
-  dplyr::filter(Species_Name == "Chionoecetes bairdi",
-                index %in% c(1, 2, 3),
-                Year %in% c(2015, 2016),
-                Sex %in% c(1, 2)) %>%
-  dplyr::select(PCR_result, Size, Sex, index, Year, STATIONID, julian, START_LONGITUDE, BOTTOM_DEPTH, Bottom_Temp) %>%
-  dplyr::rename(pcr = PCR_result,
-                size = Size,
-                sex = Sex,
-                year = Year,
-                station = STATIONID,
-                longitude = START_LONGITUDE,
-                depth = BOTTOM_DEPTH,
-                temperature = Bottom_Temp) %>%
+  dplyr::filter(species_name == "Chionoecetes bairdi",
+                index_site %in% c(1, 2, 3),
+                year %in% c(2015:2017),
+                sex %in% c(1, 2),
+                pcr_result %in% c(1, 0)) %>%
+  dplyr::select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_longitude, bottom_depth, gear_temperature) %>%
+  dplyr::rename(pcr = pcr_result,
+                station = gis_station,
+                longitude = mid_longitude,
+                depth = bottom_depth,
+                temperature = gear_temperature,
+                index = index_site) %>%
   dplyr::mutate(year = as.factor(year),
                 sex = as.factor(sex),
                 index = as.factor(index),
                 station = as.factor(station)) 
 
-nrow(tanner.dat) # 886 samples!
+nrow(tanner.dat) # 1285 samples!
 
 # need dimension reduction for exogenous covariates (day, depth, longitude, temperature)
 
@@ -74,7 +52,7 @@ pca.dat <- tanner.dat %>%
                    longitude = -mean(longitude),
                    temperature = mean(temperature))
 
-cor(pca.dat[,3:6])
+cor(pca.dat[,3:6]) # temp no longer correlated with others! 
 
 # plot - for the paper?
 plot <- data.frame(Day_of_year = pca.dat$julian,
@@ -89,7 +67,7 @@ ggplot(plot, aes(Day_of_year, value)) +
   geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = F, color = "black", lwd = 0.3) +
   facet_wrap(~name, scales = "free_y", ncol = 1) +
   geom_point(aes(color = as.factor(year))) +
-  scale_color_manual(values = cb[c(2,4)]) +
+  scale_color_manual(values = cb[c(2,4,6)]) +
   theme(legend.title = element_blank())
 
 ggsave("./figs/tanner_julian_temp_depth_long.png", width = 5, height = 6, units = 'in')
@@ -97,112 +75,76 @@ ggsave("./figs/tanner_julian_temp_depth_long.png", width = 5, height = 6, units 
 # DFA is hard here b/c we want to include time as one of the time series, *and* we don't have continuous observations for DFA
 
 # could just fit a PCA!
-PCA <- prcomp(dfa.dat[,3:6], scale = T, center = T)
+PCA <- prcomp(pca.dat[,3:5], scale = T, center = T)
 PCA$rotation
 PCA$x
 pca.dat$pc1 <- PCA$x[,1]
 
 # and join pc1 back in
-tanner.dat <- left_join(tanner.dat, pca.dat)
+pc1 <- pca.dat %>%
+  dplyr::select(station, year, pc1)
 
+tanner.dat <- left_join(tanner.dat, pc1)
 
 ## define model formula
-tanner1_formula <-  bf(pcr ~ sex + maturity + index + year) # simple first model
-
-
-tanner1.hier_formula <-  bf(pcr ~ sex + maturity + index + year + (1 | year/index/station)) # and hierarchical version of same                       
-
-## Set model family
-family <- bernoulli(link = "logit")
-
+tanner1_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + (1 | year/index/station)) # simple first model
 
 ## Show default priors
-get_prior(tanner1_formula, tanner.dat, family = family)
+get_prior(tanner1_formula, tanner.dat, family = bernoulli(link = "logit"))
 
 ## fit binomial mode --------------------------------------
-tanner1_bernoulli <- brm(tanner1_formula,
+tanner1 <- brm(tanner1_formula,
                          data = tanner.dat,
-                         family = family,
+                         family = bernoulli(link = "logit"),
                          cores = 4, chains = 4, iter = 2500,
                          save_pars = save_pars(all = TRUE),
                          control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-# cod0_zinb_k3  <- add_criterion(cod0_zinb_k3, c("loo", "bayes_R2"),
-# moment_match = TRUE)
-saveRDS(tanner1_bernoulli, file = "./output/tanner1_bernoulli.rds")
 
-tanner1_bernoulli <- readRDS("./output/tanner1_bernoulli.rds")
-check_hmc_diagnostics(tanner1_bernoulli$fit)
-neff_lowest(tanner1_bernoulli$fit)
-rhat_highest(tanner1_bernoulli$fit)
-summary(tanner1_bernoulli)
-bayes_R2(tanner1_bernoulli)
-# plot(tanner1_bernoulli$criteria$loo, "k")
+saveRDS(tanner1, file = "./output/tanner1.rds")
 
+tanner1 <- readRDS("./output/tanner1.rds")
+check_hmc_diagnostics(tanner1$fit)
+neff_lowest(tanner1$fit)
+rhat_highest(tanner1$fit)
+summary(tanner1)
+bayes_R2(tanner1)
+plot(conditional_smooths(tanner1), ask = FALSE)
+
+# plot(tanner1$criteria$loo, "k")
+plot(conditional_smooths(tanner1), ask = FALSE)
 # posterior predictive test
 
 y <- tanner.dat$pcr
-yrep_tanner1_bernoulli  <- fitted(tanner1_bernoulli, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_tanner1_bernoulli[sample(nrow(yrep_tanner1_bernoulli), 25), ]) +
-  ggtitle("tanner1_bernoulli")
+yrep_tanner1  <- fitted(tanner1, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_tanner1[sample(nrow(yrep_tanner1), 25), ]) +
+  ggtitle("tanner1")
 
-# this is not a good fit!
+# this is not a good fit? I don't have experience with logistic models in brms
 
-# pdf("./figs/trace_tanner1_bernoulli.pdf", width = 6, height = 4)
-trace_plot(tanner1_bernoulli$fit)
+# pdf("./figs/trace_tanner1.pdf", width = 6, height = 4)
+trace_plot(tanner1$fit)
 # dev.off()
 
 ###################################################
-# see if the hierarchical model is an improvement!
+# add temp as covariate
+tanner2_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(temperature, k = 4) + (1 | year/index/station))
 
-tanner1_hier_bernoulli <- brm(tanner1.hier_formula,
+tanner2 <- brm(tanner2_formula,
                               data = tanner.dat,
-                              family = family,
+                              family = bernoulli(link = "logit"),
                               cores = 4, chains = 4, iter = 2500,
                               save_pars = save_pars(all = TRUE),
                               control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-# cod0_zinb_k3  <- add_criterion(cod0_zinb_k3, c("loo", "bayes_R2"),
-# moment_match = TRUE)
-saveRDS(tanner1_hier_bernoulli, file = "./output/tanner1_hier_bernoulli.rds")
+saveRDS(tanner2, file = "./output/tanner2.rds")
 
-tanner1_hier_bernoulli <- readRDS("./output/tanner1_hier_bernoulli.rds")
-check_hmc_diagnostics(tanner1_hier_bernoulli$fit)
-neff_lowest(tanner1_hier_bernoulli$fit)
-rhat_highest(tanner1_hier_bernoulli$fit)
-summary(tanner1_hier_bernoulli)
-bayes_R2(tanner1_hier_bernoulli)
-# plot(tanner1_hier_bernoulli$criteria$loo, "k")
-
-# posterior predictive test
-
-y <- tanner.dat$pcr
-yrep_tanner1_hier_bernoulli  <- fitted(tanner1_hier_bernoulli, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_tanner1_hier_bernoulli[sample(nrow(yrep_tanner1_hier_bernoulli), 25), ]) +
-  ggtitle("tanner1_hier_bernoulli")
-
-# the model still isn't great
-# drop year as it seems unimportant
-
-tanner2.hier_formula <-  bf(pcr ~ sex + maturity + index + (1 | year/index/station)) # and hierarchical version of same                       
-
-tanner2_hier_bernoulli <- brm(tanner2.hier_formula,
-                              data = tanner.dat,
-                              family = family,
-                              cores = 4, chains = 4, iter = 2500,
-                              save_pars = save_pars(all = TRUE),
-                              control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-# cod0_zinb_k3  <- add_criterion(cod0_zinb_k3, c("loo", "bayes_R2"),
-# moment_match = TRUE)
-saveRDS(tanner2_hier_bernoulli, file = "./output/tanner2_hier_bernoulli.rds")
-
-tanner2_hier_bernoulli <- readRDS("./output/tanner2_hier_bernoulli.rds")
-check_hmc_diagnostics(tanner2_hier_bernoulli$fit)
-neff_lowest(tanner2_hier_bernoulli$fit)
-rhat_highest(tanner2_hier_bernoulli$fit)
-summary(tanner2_hier_bernoulli)
-bayes_R2(tanner2_hier_bernoulli)
+tanner2 <- readRDS("./output/tanner2.rds")
+check_hmc_diagnostics(tanner2$fit)
+neff_lowest(tanner2$fit)
+rhat_highest(tanner2$fit)
+summary(tanner2) 
+bayes_R2(tanner2)
 # plot(tanner2_hier_bernoulli$criteria$loo, "k")
 
 # posterior predictive test
@@ -212,42 +154,84 @@ yrep_tanner2_hier_bernoulli  <- fitted(tanner2_hier_bernoulli, scale = "response
 ppc_dens_overlay(y = y, yrep = yrep_tanner2_hier_bernoulli[sample(nrow(yrep_tanner2_hier_bernoulli), 25), ]) +
   ggtitle("tanner2_hier_bernoulli")
 
-# still poor 
-# add size
+# model comparison
+loo(tanner1, tanner2) # temp does not improve prediction
 
-tanner3.hier_formula <-  bf(pcr ~ sex + s(size, k = 3) + index + (1 | year/index/station)) # and hierarchical version of same                       
+# loo(tanner1, tanner2, moment_match = T) # moment matching crashes - need to try updating R / packages
 
-tanner3_hier_bernoulli <- brm(tanner3.hier_formula,
+# see if a sex effect improves model
+
+tanner3_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex + (1 | year/index/station))                      
+
+tanner3 <- brm(tanner3_formula,
                               data = tanner.dat,
-                              family = family,
+                              family =bernoulli(link = "logit"),
                               cores = 4, chains = 4, iter = 2500,
                               save_pars = save_pars(all = TRUE),
                               control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-tanner3_hier_bernoulli  <- add_criterion(tanner3_hier_bernoulli, "loo",
-                                         moment_match = TRUE)
+# tanner3  <- add_criterion(tanner3, "loo",
+#                                          moment_match = TRUE)
 
-saveRDS(tanner3_hier_bernoulli, file = "./output/tanner3_hier_bernoulli.rds")
+saveRDS(tanner3, file = "./output/tanner3.rds")
 
-tanner3_hier_bernoulli <- readRDS("./output/tanner3_hier_bernoulli.rds")
+tanner3 <- readRDS("./output/tanner3.rds")
 
-check_hmc_diagnostics(tanner3_hier_bernoulli$fit)
-neff_lowest(tanner3_hier_bernoulli$fit)
-rhat_highest(tanner3_hier_bernoulli$fit)
-summary(tanner3_hier_bernoulli)
-bayes_R2(tanner3_hier_bernoulli)
-# plot(tanner3_hier_bernoulli$criteria$loo, "k")
+check_hmc_diagnostics(tanner3$fit)
+neff_lowest(tanner3$fit)
+rhat_highest(tanner3$fit)
+summary(tanner3) # no evidence of a sex effect
+bayes_R2(tanner3)
+# plot(tanner3$criteria$loo, "k")
 
 # posterior predictive test
 
 y <- tanner.dat$pcr
-yrep_tanner3_hier_bernoulli  <- fitted(tanner3_hier_bernoulli, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_tanner3_hier_bernoulli[sample(nrow(yrep_tanner3_hier_bernoulli), 25), ]) +
-  ggtitle("tanner3_hier_bernoulli")
+yrep_tanner3  <- fitted(tanner3, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_tanner3[sample(nrow(yrep_tanner3), 25), ]) +
+  ggtitle("tanner3")
 
 # still poor
 
 # let's run the model comparison
+loo(tanner1, tanner2, tanner3)
+
+# finally, check for a year effect
+
+tanner4_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station))                      
+
+tanner4 <- brm(tanner4_formula,
+               data = tanner.dat,
+               family =bernoulli(link = "logit"),
+               cores = 4, chains = 4, iter = 5000, # increasing iterations
+               save_pars = save_pars(all = TRUE),
+               control = list(adapt_delta = 0.999, max_treedepth = 14))
+
+# tanner4  <- add_criterion(tanner4, "loo",
+#                                          moment_match = TRUE)
+
+saveRDS(tanner4, file = "./output/tanner4.rds")
+
+tanner4 <- readRDS("./output/tanner4.rds")
+
+check_hmc_diagnostics(tanner4$fit)
+neff_lowest(tanner4$fit) # too low!
+rhat_highest(tanner4$fit)
+summary(tanner4) # no evidence of a year effect
+bayes_R2(tanner4)
+# plot(tanner4$criteria$loo, "k")
+
+# posterior predictive test
+
+y <- tanner.dat$pcr
+yrep_tanner4  <- fitted(tanner4, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_tanner4[sample(nrow(yrep_tanner4), 25), ]) +
+  ggtitle("tanner4")
+
+loo(tanner1, tanner2, tanner3, tanner4) # tanner4 marginally the best!
+
+################################################################################
+
 tanner1_bernoulli <- readRDS("./output/tanner1_bernoulli.rds")
 tanner1_hier_bernoulli <- readRDS("./output/tanner1_hier_bernoulli.rds")
 tanner2_hier_bernoulli <- readRDS("./output/tanner2_hier_bernoulli.rds")
