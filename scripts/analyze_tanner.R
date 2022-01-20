@@ -172,40 +172,40 @@ loo(tanner1, tanner2) # temp does not improve prediction
 ###############################################################################################
 # see if a sex effect improves model
 
-tanner3_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex + (1 | year/index/station))                      
+tanner4_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex + (1 | year/index/station))                      
 
-tanner3 <- brm(tanner3_formula,
+tanner4 <- brm(tanner4_formula,
                               data = tanner.dat,
                               family =bernoulli(link = "logit"),
                               cores = 4, chains = 4, iter = 2500,
                               save_pars = save_pars(all = TRUE),
                               control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-# tanner3  <- add_criterion(tanner3, "loo",
+# tanner4  <- add_criterion(tanner4, "loo",
 #                                          moment_match = TRUE)
 
-saveRDS(tanner3, file = "./output/tanner3.rds")
+saveRDS(tanner4, file = "./output/tanner4.rds")
 
-tanner3 <- readRDS("./output/tanner3.rds")
+tanner4 <- readRDS("./output/tanner4.rds")
 
-check_hmc_diagnostics(tanner3$fit)
-neff_lowest(tanner3$fit)
-rhat_highest(tanner3$fit)
-summary(tanner3) # no evidence of a sex effect
-bayes_R2(tanner3)
-# plot(tanner3$criteria$loo, "k")
+check_hmc_diagnostics(tanner4$fit)
+neff_lowest(tanner4$fit)
+rhat_highest(tanner4$fit)
+summary(tanner4) # no evidence of a sex effect
+bayes_R2(tanner4)
+# plot(tanner4$criteria$loo, "k")
 
 # posterior predictive test
 
 y <- tanner.dat$pcr
-yrep_tanner3  <- fitted(tanner3, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_tanner3[sample(nrow(yrep_tanner3), 25), ]) +
-  ggtitle("tanner3")
+yrep_tanner4  <- fitted(tanner4, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_tanner4[sample(nrow(yrep_tanner4), 25), ]) +
+  ggtitle("tanner4")
 
 # still poor
 
 # let's run the model comparison
-loo(tanner1, tanner2, tanner3)
+loo(tanner1, tanner2, tanner4)
 
 # finally, check for a year effect
 
