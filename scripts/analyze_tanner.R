@@ -253,7 +253,7 @@ tanner5_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/i
 tanner5 <- brm(tanner5_formula,
                data = tanner.dat,
                family =bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 5000, # increasing iterations - can reduce to 4000 for re-runs
+               cores = 4, chains = 4, iter = 4000, # increasing iterations 
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
