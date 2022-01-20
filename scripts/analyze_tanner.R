@@ -203,7 +203,7 @@ tanner4_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/i
 tanner4 <- brm(tanner4_formula,
                data = tanner.dat,
                family =bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 5000, # increasing iterations
+               cores = 4, chains = 4, iter = 5000, # increasing iterations - can reduce to 4000 for re-runs
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -228,164 +228,13 @@ yrep_tanner4  <- fitted(tanner4, scale = "response", summary = FALSE)
 ppc_dens_overlay(y = y, yrep = yrep_tanner4[sample(nrow(yrep_tanner4), 25), ]) +
   ggtitle("tanner4")
 
+# png("./figs/trace_tanner4.png", width = 6, height = 4, units = 'in', res = 300)
+trace_plot(tanner4$fit)
+# dev.off()
+
 loo(tanner1, tanner2, tanner3, tanner4) # tanner4 marginally the best!
 
-################################################################################
 
-tanner1_bernoulli <- readRDS("./output/tanner1_bernoulli.rds")
-tanner1_hier_bernoulli <- readRDS("./output/tanner1_hier_bernoulli.rds")
-tanner2_hier_bernoulli <- readRDS("./output/tanner2_hier_bernoulli.rds")
-tanner3_hier_bernoulli <- readRDS("./output/tanner3_hier_bernoulli.rds")
-
-model.comp <- loo(tanner1_bernoulli, tanner1_hier_bernoulli, tanner2_hier_bernoulli, tanner3_hier_bernoulli)
-
-model.comp # the three hierarchical models are very similar!
-
-# try a model with size and season!
-
-tanner4.hier_formula <-  bf(pcr ~ s(size, k = 3) + s(julian, k = 3) + (1 | year/index/station))
-
-tanner4_hier_bernoulli <- brm(tanner4.hier_formula,
-                              data = tanner.dat,
-                              family = family,
-                              cores = 4, chains = 4, iter = 2500,
-                              save_pars = save_pars(all = TRUE),
-                              control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-# tanner4_hier_bernoulli  <- add_criterion(tanner4_hier_bernoulli, "loo",
-# moment_match = TRUE)
-
-saveRDS(tanner4_hier_bernoulli, file = "./output/tanner4_hier_bernoulli.rds")
-
-tanner4_hier_bernoulli <- readRDS("./output/tanner4_hier_bernoulli.rds")
-
-check_hmc_diagnostics(tanner4_hier_bernoulli$fit)
-neff_lowest(tanner4_hier_bernoulli$fit)
-rhat_highest(tanner4_hier_bernoulli$fit)
-summary(tanner4_hier_bernoulli)
-bayes_R2(tanner4_hier_bernoulli)
-
-# plot(tanner4_hier_bernoulli$criteria$loo, "k")
-plot(conditional_smooths(tanner4_hier_bernoulli), ask = FALSE)
-# posterior predictive test
-
-y <- tanner.dat$pcr
-yrep_tanner4_hier_bernoulli  <- fitted(tanner4_hier_bernoulli, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_tanner4_hier_bernoulli[sample(nrow(yrep_tanner4_hier_bernoulli), 25), ]) +
-  ggtitle("tanner4_hier_bernoulli")
-
-ggsave("./figs/tanner_4_bernoulli_ppc_overlay.png", width = 5, height = 4, units = 'in')
-
-# and trace plot
-png("./figs/trace_tanner4_hier_bernoulli.png", width = 6, height = 4, units = 'in', res = 300)
-trace_plot(tanner4_hier_bernoulli$fit)
-dev.off()
-
-
-
-
-tanner1_bernoulli <- readRDS("./output/tanner1_bernoulli.rds")
-tanner1_hier_bernoulli <- readRDS("./output/tanner1_hier_bernoulli.rds")
-tanner2_hier_bernoulli <- readRDS("./output/tanner2_hier_bernoulli.rds")
-tanner3_hier_bernoulli <- readRDS("./output/tanner3_hier_bernoulli.rds")
-tanner4_hier_bernoulli <- readRDS("./output/tanner4_hier_bernoulli.rds")
-
-model.comp <- loo(tanner1_bernoulli, tanner1_hier_bernoulli, tanner2_hier_bernoulli, 
-                  tanner3_hier_bernoulli, tanner4_hier_bernoulli)
-
-model.comp
-
-# add sex - support for that covariate?
-tanner5.hier_formula <-  bf(pcr ~ s(size, k = 3) + s(julian, k = 3) + sex + (1 | year/index/station))
-
-tanner5_hier_bernoulli <- brm(tanner5.hier_formula,
-                              data = tanner.dat,
-                              family = family,
-                              cores = 4, chains = 4, iter = 2500,
-                              save_pars = save_pars(all = TRUE),
-                              control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-# tanner5_hier_bernoulli  <- add_criterion(tanner5_hier_bernoulli, "loo",
-# moment_match = TRUE)
-
-saveRDS(tanner5_hier_bernoulli, file = "./output/tanner5_hier_bernoulli.rds")
-
-tanner5_hier_bernoulli <- readRDS("./output/tanner5_hier_bernoulli.rds")
-
-check_hmc_diagnostics(tanner5_hier_bernoulli$fit)
-neff_lowest(tanner5_hier_bernoulli$fit)
-rhat_highest(tanner5_hier_bernoulli$fit)
-summary(tanner5_hier_bernoulli) # no suggestion of a sex effect!
-bayes_R2(tanner5_hier_bernoulli)
-
-# plot(tanner5_hier_bernoulli$criteria$loo, "k")
-plot(conditional_smooths(tanner5_hier_bernoulli), ask = FALSE)
-# posterior predictive test
-
-y <- tanner.dat$pcr
-yrep_tanner5_hier_bernoulli  <- fitted(tanner5_hier_bernoulli, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_tanner5_hier_bernoulli[sample(nrow(yrep_tanner5_hier_bernoulli), 25), ]) +
-  ggtitle("tanner5_hier_bernoulli")
-
-tanner1_bernoulli <- readRDS("./output/tanner1_bernoulli.rds")
-tanner1_hier_bernoulli <- readRDS("./output/tanner1_hier_bernoulli.rds")
-tanner2_hier_bernoulli <- readRDS("./output/tanner2_hier_bernoulli.rds")
-tanner3_hier_bernoulli <- readRDS("./output/tanner3_hier_bernoulli.rds")
-tanner4_hier_bernoulli <- readRDS("./output/tanner4_hier_bernoulli.rds")
-tanner5_hier_bernoulli <- readRDS("./output/tanner5_hier_bernoulli.rds")
-
-model.comp <- loo(tanner1_bernoulli, tanner1_hier_bernoulli, tanner2_hier_bernoulli, 
-                  tanner3_hier_bernoulli, tanner4_hier_bernoulli, tanner5_hier_bernoulli)
-
-model.comp # model 4 still the best
-
-# try with a different random structure
-tanner.dat$station_year <- as.factor(paste(tanner.dat$station, tanner.dat$year, sep = "_"))
-
-
-tanner6.hier_formula <-  bf(pcr ~ s(size, k = 3) + s(julian, k = 3) + (1 | station_year))
-
-tanner6_hier_bernoulli <- brm(tanner6.hier_formula,
-                              data = tanner.dat,
-                              family = bernoulli(link = "logit"),
-                              cores = 4, chains = 4, iter = 2500,
-                              save_pars = save_pars(all = TRUE),
-                              control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-# tanner6_hier_bernoulli  <- add_criterion(tanner6_hier_bernoulli, "loo",
-# moment_match = TRUE)
-
-saveRDS(tanner6_hier_bernoulli, file = "./output/tanner6_hier_bernoulli.rds")
-
-tanner6_hier_bernoulli <- readRDS("./output/tanner6_hier_bernoulli.rds")
-
-check_hmc_diagnostics(tanner6_hier_bernoulli$fit)
-neff_lowest(tanner6_hier_bernoulli$fit)
-rhat_highest(tanner6_hier_bernoulli$fit)
-summary(tanner6_hier_bernoulli)
-bayes_R2(tanner6_hier_bernoulli)
-
-# plot(tanner6_hier_bernoulli$criteria$loo, "k")
-plot(conditional_smooths(tanner6_hier_bernoulli), ask = FALSE)
-# posterior predictive test
-
-y <- tanner.dat$pcr
-yrep_tanner6_hier_bernoulli  <- fitted(tanner6_hier_bernoulli, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_tanner6_hier_bernoulli[sample(nrow(yrep_tanner6_hier_bernoulli), 25), ]) +
-  ggtitle("tanner6_hier_bernoulli")
-
-tanner1_bernoulli <- readRDS("./output/tanner1_bernoulli.rds")
-tanner1_hier_bernoulli <- readRDS("./output/tanner1_hier_bernoulli.rds")
-tanner2_hier_bernoulli <- readRDS("./output/tanner2_hier_bernoulli.rds")
-tanner3_hier_bernoulli <- readRDS("./output/tanner3_hier_bernoulli.rds")
-tanner4_hier_bernoulli <- readRDS("./output/tanner4_hier_bernoulli.rds")
-tanner5_hier_bernoulli <- readRDS("./output/tanner5_hier_bernoulli.rds")
-tanner6_hier_bernoulli <- readRDS("./output/tanner6_hier_bernoulli.rds")
-
-model.comp <- loo(tanner1_bernoulli, tanner1_hier_bernoulli, tanner2_hier_bernoulli, 
-                  tanner3_hier_bernoulli, tanner4_hier_bernoulli, tanner5_hier_bernoulli, tanner6_hier_bernoulli)
-
-model.comp # model 4 still the best
 
 
 tanner1_formula <-  bf(pcr ~ sex + maturity + index + year) # simple first model
