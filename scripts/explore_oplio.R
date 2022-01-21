@@ -28,7 +28,7 @@ ggplot(dat, aes(snow70under_cpue)) +
 ggplot(dat, aes(snow70under_cpue^0.25)) +
   geom_histogram(bins = 30, fill = "grey", color = "black")
 
-# separate Tanner data
+# separate snow crab data
 opilio.dat <- dat %>%
   dplyr::filter(species_name == "Chionoecetes opilio",
                 index_site %in% c(4, 5, 6),
