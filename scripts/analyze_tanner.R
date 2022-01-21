@@ -321,50 +321,28 @@ ppc_dens_overlay(y = y, yrep = yrep_tanner5[sample(nrow(yrep_tanner5), 25), ]) +
 trace_plot(tanner5$fit)
 # dev.off()
 
-loo(tanner1, tanner2, tanner3, tanner4, tanner5, tanner6) # tanner5 marginally the best!
+model.comp <- loo(tanner1, tanner2, tanner3, tanner4, tanner5, tanner6) # tanner5 marginally the best!
 
+model.comp
 
-tanner1_formula <-  bf(pcr ~ sex + maturity + index + year) # simple first model
-tanner1.hier_formula <-  bf(pcr ~ sex + maturity + index + year + (1 | year/index/station)) # and hierarchical version of same                       
-tanner2.hier_formula <-  bf(pcr ~ sex + maturity + index + (1 | year/index/station)) # and hierarchical version of same                       
-tanner3.hier_formula <-  bf(pcr ~ sex + s(size, k = 3) + index + (1 | year/index/station)) # and hierarchical version of same                       
-tanner4.hier_formula <-  bf(pcr ~ s(size, k = 3) + s(julian, k = 3) + (1 | year/index/station))
-tanner5.hier_formula <-  bf(pcr ~ s(size, k = 3) + s(julian, k = 3) + sex + (1 | year/index/station))
-tanner6.hier_formula <-  bf(pcr ~ s(size, k = 3) + s(julian, k = 3) + (1 | station_year))
+# save model comparison 
 
-############
-# save model comparison for ms.
-forms <- data.frame(formula=c(as.character(tanner4.hier_formula)[1],
-                              as.character(tanner3.hier_formula)[1],
-                              as.character(tanner6.hier_formula)[1],
-                              as.character(tanner5.hier_formula)[1],
-                              as.character(tanner1.hier_formula)[1],
-                              as.character(tanner2.hier_formula)[1],
-                              as.character(tanner1_formula)[1]))
+forms <- data.frame(formula=c(as.character(tanner1_formula)[1],
+                              as.character(tanner6_formula)[1],
+                              as.character(tanner3_formula)[1],
+                              as.character(tanner5_formula)[1],
+                              as.character(tanner2_formula)[1],
+                              as.character(tanner4_formula)[1]))
 
 comp.out <- cbind(forms, model.comp$diffs[,1:2])
-write.csv(comp.out, "./output/growth_model_comp.csv")
+
+write.csv(comp.out, "./output/tanner_model_comp.csv")
 
 ###########################
-# plot predicted effects from best model (tanner5)
-tanner5 <- readRDS("./output/tanner5.rds")
+# plot predicted effects from best model (tanner1)
+tanner1 <- readRDS("./output/tanner1.rds")
 
-# first year
-ce1s_1 <- conditional_effects(tanner5, effect = "year", re_formula = NA,
-                              probs = c(0.025, 0.975))  
-
-plot <- ce1s_1$year %>%
-  dplyr::select(year, estimate__, lower__, upper__)
-
-plot$far_fac <- reorder(plot$far_fac, desc(plot$far_fac))
-
-ggplot(plot, aes(year, estimate__)) +
-  geom_point(size=3) +
-  geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
-  ylab("Probability positive") +
-  ggtitle("Tanner5 - posterior mean & 95% credible interval")
-
-# then size
+# first size
 
 ## 95% CI
 ce1s_1 <- conditional_effects(tanner1, effect = "size", re_formula = NA,
@@ -390,7 +368,7 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
   labs(x = "Carapace width (mm)", y = "Probability positive") +
-  ggtitle("tanner1 - posterior mean & 80 / 90 / 95% credible intervals")
+  ggtitle("Tanner1 - posterior mean & 80 / 90 / 95% credible intervals")
 
 ggsave("./figs/tanner1_size_effect.png", width = 6, height = 4, units = 'in')
 
@@ -420,6 +398,33 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
   labs(x = "PC1 (day of year, depth, longitude)", y = "Probability positive") +
-  ggtitle("tanner1 - posterior mean & 80 / 90 / 95% credible intervals")
+  ggtitle("Tanner1 - posterior mean & 80 / 90 / 95% credible intervals")
 
 ggsave("./figs/tanner1_pc1_effect.png", width = 6, height = 4, units = 'in')
+
+# predict for size < 60mm
+
+new.dat <- tanner.dat %>%
+  dplyr::filter(size < 60)
+
+
+posterior.predict <- posterior_epred(tanner1, newdata = new.dat)
+
+tanner.estimate <- data.frame(species = "Tanner",
+                              estimate = mean(posterior.predict),
+                              lower_95 = quantile(posterior.predict, probs = 0.025),
+                              upper_95 = quantile(posterior.predict, probs = 0.975),
+                              lower_90 = quantile(posterior.predict, probs = 0.05),
+                              upper_90 = quantile(posterior.predict, probs = 0.95),
+                              lower_80 = quantile(posterior.predict, probs = 0.1),
+                              upper_80 = quantile(posterior.predict, probs = 0.9))
+
+ggplot(tanner.estimate) +
+  aes(x = species, y = estimate) +
+  geom_errorbar(aes(ymin = lower_95, ymax = upper_95), color = "grey80") +
+  geom_errorbar(aes(ymin = lower_90, ymax = upper_90), color = "grey60") +
+  geom_errorbar(aes(ymin = lower_80, ymax = upper_80), color = "black") +
+  geom_point(size = 3, color = "red3") +
+  theme_classic()
+
+ggsave("./figs/tanner estimate.png", width = 2, height = 2.5, units = 'in')
