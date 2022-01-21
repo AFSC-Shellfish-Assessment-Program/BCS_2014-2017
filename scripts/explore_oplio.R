@@ -1,4 +1,4 @@
-# explore and analyze infection dynamics in C. bairdi
+# explore and analyze infection dynamics in C. opilio
 
 library(tidyverse)
 library(plyr)
