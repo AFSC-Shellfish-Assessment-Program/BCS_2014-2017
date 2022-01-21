@@ -28,7 +28,7 @@ ggplot(dat, aes(snow70under_cpue)) +
 ggplot(dat, aes(snow70under_cpue^0.25)) +
   geom_histogram(bins = 30, fill = "grey", color = "black")
 
-# separate Tanner data
+# separate opilio data
 opilio.dat <- dat %>%
   dplyr::filter(species_name == "Chionoecetes opilio",
                 index_site %in% c(4, 5, 6),
@@ -58,8 +58,6 @@ check <- opilio.dat$year == 2015 & opilio.dat$station == "I-23"
 opilio.dat[check,]
 
 # fix
-
-use <- oplio.dat[check,]
 
 opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","julian"] <-
   opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","julian"][1]
@@ -313,7 +311,44 @@ ppc_dens_overlay(y = y, yrep = yrep_opilio5[sample(nrow(yrep_opilio5), 25), ]) +
 trace_plot(opilio5$fit)
 # dev.off()
 
-model.comp <- loo(opilio1, opilio2, opilio3, opilio4, opilio5) # opilio5 marginally the best!
+## additional suggested model - size, pc1, year
+opilio6_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station))                      
+
+opilio6 <- brm(opilio6_formula,
+               data = opilio.dat,
+               family =bernoulli(link = "logit"),
+               cores = 4, chains = 4, iter = 4000, # increasing iterations 
+               save_pars = save_pars(all = TRUE),
+               control = list(adapt_delta = 0.999, max_treedepth = 14))
+
+# opilio6  <- add_criterion(opilio6, "loo",
+#                                          moment_match = TRUE)
+
+saveRDS(opilio6, file = "./output/opilio6.rds")
+
+opilio6 <- readRDS("./output/opilio6.rds")
+
+check_hmc_diagnostics(opilio6$fit)
+neff_lowest(opilio6$fit) # too low!
+rhat_highest(opilio6$fit)
+summary(opilio6) # no evidence of a year effect
+bayes_R2(opilio6)
+# plot(opilio6$criteria$loo, "k")
+
+# posterior predictive test
+
+y <- opilio.dat$pcr
+yrep_opilio6  <- fitted(opilio6, scale = "response", summary = FALSE)
+ppc_dens_overlay(y = y, yrep = yrep_opilio6[sample(nrow(yrep_opilio6), 25), ]) +
+  ggtitle("opilio6")
+
+# png("./figs/trace_opilio6.png", width = 6, height = 4, units = 'in', res = 300)
+trace_plot(opilio6$fit)
+# dev.off()
+
+#######
+
+model.comp <- loo(opilio1, opilio2, opilio3, opilio4, opilio5, opilio6) # opilio5 marginally the best!
 
 model.comp
 
@@ -321,6 +356,7 @@ model.comp
 forms <- data.frame(formula=c(as.character(opilio5_formula)[1],
                               as.character(opilio4_formula)[1],
                               as.character(opilio3_formula)[1],
+                              as.character(opilio6_formula)[1],
                               as.character(opilio1_formula)[1],
                               as.character(opilio2_formula)[1]))
 

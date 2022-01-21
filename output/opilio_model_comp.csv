@@ -2,5 +2,6 @@
 "opilio5","pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fourth.root.cpue70, k = 4) + sex + year + (1 | year/index/station)",0,0
 "opilio4","pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fourth.root.cpue70, k = 4) + sex + (1 | year/index/station)",-0.322818290796931,0.266598276039962
 "opilio3","pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index/station)",-2.09693204366077,2.79003893014742
+"opilio6","pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station)",-2.4227394901056,2.95416249227455
 "opilio1","pcr ~ s(size, k = 4) + s(pc1, k = 4) + (1 | year/index/station)",-2.66268866589842,2.94328959190529
 "opilio2","pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(depth, k = 4) + (1 | year/index/station)",-2.81001547591234,2.98194630917676
