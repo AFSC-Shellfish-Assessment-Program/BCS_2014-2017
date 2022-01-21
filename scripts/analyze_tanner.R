@@ -287,7 +287,7 @@ trace_plot(tanner5$fit)
 loo(tanner1, tanner2, tanner3, tanner4, tanner5) # tanner5 marginally the best!
 
 ########
-tanner6_formula <-  bf(pcr ~ s(size, k = 4) + station + (1 | year/index/station))                      
+tanner6_formula <-  bf(pcr ~ s(size, k = 4) + index + (1 | year/index/station))                      
 
 tanner6 <- brm(tanner6_formula,
                data = tanner.dat,
@@ -304,7 +304,7 @@ saveRDS(tanner6, file = "./output/tanner6.rds")
 tanner6 <- readRDS("./output/tanner6.rds")
 
 check_hmc_diagnostics(tanner6$fit)
-neff_lowest(tanner6$fit) # too low!
+neff_lowest(tanner6$fit) 
 rhat_highest(tanner6$fit)
 summary(tanner6) # no evidence of a year effect
 bayes_R2(tanner6)
@@ -321,7 +321,7 @@ ppc_dens_overlay(y = y, yrep = yrep_tanner5[sample(nrow(yrep_tanner5), 25), ]) +
 trace_plot(tanner5$fit)
 # dev.off()
 
-loo(tanner1, tanner2, tanner3, tanner4, tanner5) # tanner5 marginally the best!
+loo(tanner1, tanner2, tanner3, tanner4, tanner5, tanner6) # tanner5 marginally the best!
 
 
 tanner1_formula <-  bf(pcr ~ sex + maturity + index + year) # simple first model
