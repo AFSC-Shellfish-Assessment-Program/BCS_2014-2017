@@ -408,9 +408,24 @@ new.dat <- tanner.dat %>%
   dplyr::filter(size < 60)
 
 
+## predict overall prevalence
+
+# first, create a combined year_index_station column to identify combinations that exist in the data
+tanner.dat$yr_ind_st <- paste(tanner.dat$year, tanner.dat$index, tanner.dat$station, sep = "_")
+
+
+new.dat <- data.frame(yr_ind_st = unique(tanner.dat$yr_ind_st),
+                      size = 30,
+                      pc1 = mean(unique(tanner.dat$pc1))
+                      )
+
+new.dat$year <- map_chr(str_split(new.dat$yr_ind_st, "_"), 1)
+new.dat$index <- map_chr(str_split(new.dat$yr_ind_st, "_"), 2)
+new.dat$station <- map_chr(str_split(new.dat$yr_ind_st, "_"), 3)
+
 posterior.predict <- posterior_epred(tanner1, newdata = new.dat)
 
-tanner.estimate <- data.frame(species = "Tanner",
+tanner.estimate <- data.frame(species = "tanner",
                               estimate = mean(posterior.predict),
                               lower_95 = quantile(posterior.predict, probs = 0.025),
                               upper_95 = quantile(posterior.predict, probs = 0.975),

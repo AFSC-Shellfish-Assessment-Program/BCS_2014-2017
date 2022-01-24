@@ -461,7 +461,23 @@ ggsave("./figs/opilio5_fourth.root.cpue70_effect.png", width = 6, height = 4, un
 
 ## predict overall prevalence
 
-posterior.predict <- posterior_epred(opilio5)
+# first, create a combined year_index_station column to identify combinations that exist in the data
+opilio.dat$yr_ind_st <- paste(opilio.dat$year, opilio.dat$index, opilio.dat$station, sep = "_")
+
+
+new.dat <- data.frame(yr_ind_st = unique(opilio.dat$yr_ind_st),
+                      size = 30,
+                      pc1 = mean(unique(opilio.dat$pc1)),
+                      fourth.root.cpue70 = mean(unique(opilio.dat$fourth.root.cpue70)),
+                      sex = 2) 
+
+new.dat$year <- map_chr(str_split(new.dat$yr_ind_st, "_"), 1)
+new.dat$index <- map_chr(str_split(new.dat$yr_ind_st, "_"), 2)
+new.dat$station <- map_chr(str_split(new.dat$yr_ind_st, "_"), 3)
+
+
+
+posterior.predict <- posterior_epred(opilio5, newdata = new.dat)
 
 opilio.estimate <- data.frame(species = "opilio",
                               estimate = mean(posterior.predict),
