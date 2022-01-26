@@ -12,6 +12,8 @@ library(MASS)
 library(lme4)
 library(car)
 library(visreg)
+library(splines)
+library(sjPlot)
 
 # colorblind palette
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
@@ -31,7 +33,7 @@ dat %>%
                 sex %in% c(1, 2),
                 pcr_result %in% c(1, 0)) %>%
   dplyr::select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_longitude, bottom_depth, gear_temperature, tanner70under_cpue) %>%
-  rename(pcr = pcr_result,
+  dplyr::rename(pcr = pcr_result,
                 station = gis_station,
                 longitude = mid_longitude,
                 depth = bottom_depth,
@@ -88,8 +90,8 @@ tanner.dat %>%
 
 # need dimension reduction for exogenous covariates (day, depth, longitude, temperature, cpue)
 tanner.dat %>%
-  group_by(station, year) %>%
-  summarise(julian = mean(julian),
+  dplyr::group_by(station, year) %>%
+  dplyr::summarise(julian = mean(julian),
                    depth = mean(depth),
                    longitude = -mean(longitude),
                    temperature = mean(temperature),
@@ -130,163 +132,102 @@ pca.dat %>%
 tanner.dat <- left_join(tanner.dat, pc1)
 
 ####################################################
-#Modeling 
-
-#plot logit transformation
-#Size plot
-ggplot(tanner.dat, aes(logit(size), logit(pcr))) +
-  geom_point() + 
-  #facet_wrap(~year) +
-  geom_smooth(method = "gam")
-
-#Temperature plot
-ggplot(tanner.dat, aes(logit(temperature), logit(pcr))) +
-  geom_point() + 
-  #facet_wrap(~year) +
-  geom_smooth(method = "gam")
-
-#CPUE plot 
-ggplot(tanner.dat, aes(logit(fourth.root.cpue70), logit(pcr))) +
-  geom_point() + 
-  #facet_wrap(~year) +
-  geom_smooth(method = "gam")
-
-#####################################################
-
 #Approach 1: use GLM's to assess whether prevalence varies as a function of size/pc1/year/site/cpue 
   #No random effects here- not accounting for variation across index sites/nested design
 
 #Full model for spatiotemporal effects: across year and across season (depth/day/long)
-glm.1 <-  glm(pcr ~ size + year + pc1, data=tanner.dat,family=binomial(link="logit"))
+glm.full <-  glm(pcr ~ size + year + pc1 + temperature + fourth.root.cpue70, data=tanner.dat,family=binomial(link="logit"))
+summary(glm.full)
+
+#Drop CPUE
+glm.1 <- update(glm.full, .~. -fourth.root.cpue70)
 summary(glm.1)
 
-#Full model for spatiotemporal effects w/ cubic splines
-glm.2 <-  glm(pcr ~ ns(size,3) + year + ns(pc1,3), data=tanner.dat,family=binomial(link="logit"))
+#Drop Temperature
+glm.2 <- update(glm.1, .~. -temperature)
 summary(glm.2)
-AIC(glm.1,glm.2) #Let's keep fixed effects linear moving forward 
 
-#Add temperature
-glm.3 <-  glm(pcr ~ size + year + pc1 +temperature, data=tanner.dat,family=binomial(link="logit"))
-summary(glm.3)
-AIC(glm.1,glm.3) #temperature doesn't improve model 
+#Final model using stepwise AIC
+mod.glm.final <- stepAIC(glm.full, direction="both")
+formula(mod.glm.final)
+summary(mod.glm.final)
 
-#Add CPUE
-glm.4 <-  glm(pcr ~ size + year + pc1 + fourth.root.cpue70, data=tanner.dat,family=binomial(link="logit"))
-summary(glm.4)
-AIC(glm.1,glm.4) #CPUE doesn't improve model 
+#Visualize marginal effects in final model
+visreg(mod.glm.final, "pc1", scale="response") #inverse-logit transformed probability
+visreg(mod.glm.final, "year", scale="response")
+visreg(mod.glm.final, "size", scale="response")
 
-#Visualize final model
-visreg(glm.1, "pc1", scale="response")
-visreg(glm.1, "year", scale="response")
-visreg(glm.1, "size", scale="response")
+#Full model w/ cubic splines for nonlinear effects
+glm.smooth <-  glm(pcr ~ ns(size,3) + year + ns(pc1,3) + ns(temperature,3) + ns(fourth.root.cpue70,3), 
+              data=tanner.dat,family=binomial(link="logit"))
+summary(glm.smooth)
+
+#Final model using stepwise AIC
+mod.glm.smooth <- stepAIC(glm.smooth, direction="both")
+formula(mod.glm.smooth)
+summary(mod.glm.smooth)
+
+#Compare linear vrs nonlinear fixed effects structure in full model 
+AIC(glm.full,glm.smooth) 
 
 ###################################################
-#Approach 2: Use GLMM's to specify a random effect for year/site/station nested design
+#Approach 2: Use GLMM's to specify 1) a random structure for 
+  #year/site/station nested design and 2) find optimal fixed structure 
 
-#Model 1:  Size as linear fixed effect, nested year-index-station as random intercept 
-glmm.1 <- glmer(pcr ~ size + (1 | index/station), family=binomial(link = "logit"), data=tanner.dat)
-summary(glmm.1)
-#Model does not converge, not enough df due to low per station sample size
+### Random effects structure:
+#Model 1:  Size and PC1 as linear fixed effect, nested year-index-station as random intercept 
+glmm.1 <- glmer(pcr ~ size + pc1 + (1 | year/index/station), family=binomial(link = "logit"), data=tanner.dat)
+  summary(glmm.1) #Warning: random effects are very small 
 
-#Model 1:  Size as linear fixed effect, nested year-index-station as random intercept 
-glmm.1 <- glmer(pcr ~ size + (1 | year/index/station), family=binomial(link = "logit"), data=tanner.dat)
-  #Model does not converge, not enough df due to low per station sample size 
+#Model 2: Size and PC1 as linear fixed effect, nested index-station as random intercept 
+glmm.2 <- glmer(pcr ~ size + pc1 + (1 | index/station), family=binomial(link = "logit"), data=tanner.dat)
+summary(glmm.2) #Warning: random effects are very small 
 
-#Model 2: Site as random effect only 
-glmm.2 <- glmer(pcr ~ size + (1 | index), family=binomial(link = "logit"), data=tanner.dat)
-summary(glmm.2)
+anova(glmm.1,glmm.2) #year/index/site structure preferred 
 
-#Model 3: Add year
-glmm.3 <- glmer(pcr ~ size + year + (1 | index), family=binomial(link = "logit"), data=tanner.dat)
+###Fixed effects structure:
+#Full model with all fixed effects
+    #NOTE: Should be using ML to estimate fixed effects but you can't specify method= in glmer?? 
+glmm.full <- glmer(pcr ~ size + year + pc1 + temperature + fourth.root.cpue70 + (1 | year/index/station),
+                   family=binomial(link = "logit"), data=tanner.dat)
+summary(glmm.full) #Convergence issues...running out of df? 
+
+#Full model with nonlinear fixed effects
+glmm.full.smooth <- glmer(pcr ~ ns(size,3) + year + ns(pc1,3) + ns(temperature,3) + ns(fourth.root.cpue70,3) + (1 | year/index/station),
+                   family=binomial(link = "logit"), data=tanner.dat) 
+summary(glmm.full.smooth) #Convergence issues...running out of df?
+
+#Compare fixed effects structure
+anova(glmm.full, glmm.full.smooth) #Linear fixed effects favored 
+
+#Drop temperature and apply likelihood ratio test 
+glmm.3 <- update(glmm.full, .~. -temperature)
+anova(glmm.full, glmm.3)
 summary(glmm.3)
 
-#Add pc1
-glmm.4 <- glmer(pcr ~ size + year + pc1 + (1 | index), family=binomial(link = "logit"), data=tanner.dat)
+#Drop CPUE and apply likelihood ratio test 
+glmm.4 <- update(glmm.3, .~. -fourth.root.cpue70)
+anova(glmm.3, glmm.4) #Very little difference in two models 
 summary(glmm.4)
 
+#Drop year and apply likelihood ratio test 
+glmm.5 <- update(glmm.4, .~. -year)
+anova(glmm.4, glmm.5)
+summary(glmm.5)
 
-#Does random effect improve model?
-m.glm <- glm(pcr ~ size + pc1 + year, data=tanner.dat,family=binomial(link="logit"))
-summary(m.glm)
-m.glmm <- glmer(pcr ~ size + pc1 + year + (1 | index), family=binomial(link = "logit"), data=tanner.dat)
-summary(m.glmm)
-AIC(m.glm, m.glmm)
+#Refit best model with REML....but no method argument
+glmm.final <- glmer(pcr ~ size + pc1 + (1 | year/index/station), family=binomial(link = "logit"), data=tanner.dat)
+  
+# Explore residuals
+plot(glmm.final) #Yikes....several high leverage observations 
+visreg(glmm.final)
 
-####Do the same for year!!!
+#Visualize marginal effects in final model
+visreg(glmm.final, "pc1", scale="response") #inverse-logit transformed probability
+visreg(glmm.final, "size", scale="response")
 
-
-#don't assume PC1 represents seasonal - 1 of factors is driving but don't know
-  #vrs using index site instead of pc1 variation: could be due to a host of different things ____
-####Try models with site instead of pc1 
-#If using PC1, frame as site differences due to depth/day sampled/log...vrs
-  #differences in index site might be due to temp, depth, 
-
-#Is seasonality due to increased detection as disease progresses vrs transmission (more crab getting it)
-    #Email Hamish 
-#include 2014 but look at patterns vrs true 
-
-#Cite morado paper (very low prevalance at lg sizes) so used non-linear effect 
-
-
-#spline terms
-#random slope?--convergence issues.... no random effect? 
-#random effects-partioning variance....but interested in year as fixed effect and don't really care
-  #about station 
-
-#Future: assess visual vrs PCR from historic data---if follows same pattern then have entire dataset to run covariates 
-  #Lab exp/temp effects paper
-  #Long timeseries BCS drivers (visual, PCR)
-  #recent declines fit to BCS
-  #NBS fit into this: 2017-2019
-
-
-m1 <- glmer(pcr ~ size + year + (1 | index), family=binomial(link = "logit"), data=tanner.dat)
-summary(m1)
-m1 <- glmer(pcr ~ size + pc1 + year + (1 | index), family=binomial(link = "logit"), data=tanner.dat)
-summary(m1)
-#Does the slope of index site vary based on size of crab sampled there?
-m3 <- glmer(pcr ~ size + pc1 + year + (1 + size | index), family=binomial(link = "logit"), data=tanner.dat)
-#model doesn't converge 
-
-#Random rationale: don't care about variation across index site becasue that's captured by pc1
-# and interest lies in underlying pop prevalance, not variation in prev across sites 
-  #year is of interest though
-#Treating factors with small numbers of levels as random will in the best case lead to very small and/or imprecise estimates of random effects; 
-#in the worst case it will lead to various numerical difficulties such as lack of convergence, zero variance estimates
-
-
-#Model 1:  Size as linear fixed effect, nested year-index-station as random intercept 
-#Model 1:  Size as linear fixed effect, nested year-index-station as random intercept 
-m1 <- glmer(pcr ~ size + (1 | year/index/station), family=binomial, data=tanner.dat)
-
-
-
-#Model 1: size, PC1 and random effect for year-index-station
-model1.PQL <- glmmPQL(pcr ~ size + pc1, random= ~1 | year/index/station, data=tanner.dat, family=binomial)
-  summary(model1.PQL)
-
-model1.lme4 <- lmer(pcr ~ size + pc1 + (1 | year/index/station), data=tanner.dat, family=binomial)
-summary(model1.lme4)
-
-spline and random effect 
-
-yearXstation
-size spline, station fixed effect, random effect 
--Need to look at prev vrs size rxn-does this warrant nonlinear rxn
-    keep size as fixed/linear then non linear 
-Always going to get better fits with more parameters-i.e. spline
-
-
-
-
-
-
-
-
-
-
-
-
+#Effect size 
+sjPlot::plot_model(glmm.final, show.values = TRUE, value.offset = .3)
 
 
 
