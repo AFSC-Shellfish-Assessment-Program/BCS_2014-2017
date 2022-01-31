@@ -32,8 +32,8 @@ dat %>%
                 year %in% c(2015:2017),
                 sex %in% c(1, 2),
                 pcr_result %in% c(1, 0)) %>%
-  dplyr::select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_longitude, bottom_depth, gear_temperature, tanner70under_cpue) %>%
-  dplyr::rename(pcr = pcr_result,
+  select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_longitude, bottom_depth, gear_temperature, tanner70under_cpue) %>%
+  rename(pcr = pcr_result,
                 station = gis_station,
                 longitude = mid_longitude,
                 depth = bottom_depth,
@@ -84,14 +84,14 @@ tanner.dat %>%
 
 #Check for correlation between continuous covariates 
 tanner.dat %>%
-  dplyr::select(size, julian, longitude, depth, temperature, fourth.root.cpue70) %>%
+  select(size, julian, longitude, depth, temperature, fourth.root.cpue70) %>%
   as.data.frame() -> cov
   corrplot(cor(cov)) #depth, longitude and julian day are problematic 
 
 # need dimension reduction for exogenous covariates (day, depth, longitude, temperature, cpue)
 tanner.dat %>%
-  dplyr::group_by(station, year) %>%
-  dplyr::summarise(julian = mean(julian),
+  group_by(station, year) %>%
+  summarise(julian = mean(julian),
                    depth = mean(depth),
                    longitude = -mean(longitude),
                    temperature = mean(temperature),
