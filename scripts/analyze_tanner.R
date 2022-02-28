@@ -1,8 +1,8 @@
 # notes ----
 #Analyze BCS infection dynamics in C. bairdi using Bayesian multivariate models 
 
-# Author: Mike Litzow (additions by Erin Fedewa)
-# last updated: 2022/1/31
+# Authors: Mike Litzow & Erin Fedewa
+# last updated: 2022/2/28
 
 #load
 library(tidyverse)
@@ -61,7 +61,7 @@ tanner.dat %>%
                    fourth.root.cpue70 = mean(fourth.root.cpue70)) -> pca.dat
 
 cor(pca.dat[,3:7]) 
-corrplot(cor(pca.dat[,3:7])) # temp no longer correlated with others, cpue weakly collinear with depth
+corrplot(cor(pca.dat[,3:7])) #temp no longer correlated with others, cpue weakly collinear with depth
 
 #Plot 
 pca.dat %>%
@@ -131,10 +131,13 @@ rhat_highest(tanner1$fit)
 summary(tanner1)
 bayes_R2(tanner1)
 plot(conditional_smooths(tanner1), ask = FALSE)
+plot(tanner1)
+
+#Posterior Predictive check 
+pp_check(tanner1, nsamples = 100)
 
 #Trace plot 
-trace_plot(tanner1$fit)
-pdf("./figs/trace_tanner1.pdf", width = 6, height = 4)
+trace_plot(tanner1$fit) 
 
 ###################################################
 # Model 2: Add temperature to base model 1 
@@ -160,15 +163,10 @@ summary(tanner2)
 bayes_R2(tanner2)
 
 #Trace plot 
-trace_plot(tanner2$fit)
-pdf("./figs/trace_tanner2.pdf", width = 6, height = 4)
+trace_plot(tanner2$fit) 
 
 # model comparison
 loo(tanner1, tanner2, moment_match = TRUE) # Temp does NOT improve prediction
-
-#Model weights
-model_weights(tanner1, tanner2) #stacking is default criteria to compute weights from 
-model_weights(tanner1, tanner2, weights="loo")
 
 ###############################################################################################
 # Model 3: Add CPUE to base model 
@@ -192,11 +190,10 @@ neff_lowest(tanner3$fit)
 rhat_highest(tanner3$fit)
 summary(tanner3) # no evidence of a CPUE effect
 bayes_R2(tanner3)
-
 plot(conditional_smooths(tanner3), ask = FALSE)
+
 #Trace plot 
 trace_plot(tanner3$fit)
-pdf("./figs/trace_tanner3.pdf", width = 6, height = 4)
 
 #Model comparison
 loo(tanner1, tanner2, tanner3, moment_match = TRUE) #Same elpd b/w tanner3 and base model 
@@ -228,7 +225,6 @@ bayes_R2(tanner4)
 
 #Trace plot 
 trace_plot(tanner4$fit)
-pdf("./figs/trace_tanner4.pdf", width = 6, height = 4)
 
 #Model comparison
 loo(tanner1, tanner2, tanner3, tanner4, moment_match = TRUE) #no improvement by adding sex 
@@ -241,7 +237,7 @@ tanner5_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/i
 tanner5 <- brm(tanner5_formula,
                data = tanner.dat,
                family =bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 4000, # increasing iterations 
+               cores = 4, chains = 4, iter = 2500, 
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -258,7 +254,6 @@ bayes_R2(tanner5)
 
 #Trace plot 
 trace_plot(tanner5$fit)
-pdf("./figs/trace_tanner5.pdf", width = 6, height = 4)
 
 #Model comparison
 loo(tanner1, tanner2, tanner3, tanner4, tanner5, moment_match = TRUE) # tanner5 marginally the best
@@ -294,7 +289,16 @@ loo(tanner5, tanner6, moment_match = TRUE) #year/site/station group level term m
 
 #All models - are different random structures directly comparable here????
 model.comp <- loo(tanner1, tanner2, tanner3, tanner4, tanner5, tanner6, moment_match=TRUE)
-model.comp
+  model.comp
+
+# Model weights based on WAIC
+waic_wts <- model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, weights = "waic")
+# Weights based on Pseudo-BMA (with Bayesian bootstrap)
+pbma_wts <- loo_model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, method = "pseudobma")
+  round(cbind(waic_wts, pbma_wts), 3)
+
+#Save model output 
+sjPlot::tab_model(tanner1, tanner2, tanner3, tanner4, tanner5, tanner6)
 
 forms <- data.frame(formula=c(as.character(tanner5_formula)[1],
                               as.character(tanner3_formula)[1],
@@ -304,8 +308,24 @@ forms <- data.frame(formula=c(as.character(tanner5_formula)[1],
                               as.character(tanner6_formula)[1]))
 
 comp.out <- cbind(forms, model.comp$diffs[,1:2])
-
 write.csv(comp.out, "./output/tanner_model_comp.csv")
+
+# Prediction from stacking by Yao et al. (2018)
+pred_stacking <- pp_average(tanner1, tanner2, tanner3, tanner4, tanner5, method = "predict")
+
+# Prediction from pseudo BMA
+# 1. Obtain predictions from each model
+pred_m12345 <- map(list(tanner1, tanner2, tanner3, tanner4, tanner5), posterior_predict)
+# 2. Obtain model weights (pbma_wts as previously obtained)
+# 3. Obtain weighted predictions
+pred_pbma <- map2(pred_m12345, pbma_wts, `*`) %>% 
+  reduce(`+`) %>% 
+  posterior_summary()
+# Compare the weights
+ggplot(tibble(stacking = pred_stacking[ , "Estimate"], 
+              pbma = pred_pbma[ , "Estimate"]), aes(x = pbma, y = stacking)) + 
+  geom_point() + 
+  geom_abline(intercept = 0, slope = 1)
 
 ###########################
 #Final Model:  Run best tanner5 model with 10,000 iterations and set seed 
@@ -330,6 +350,14 @@ rhat_highest(tannerfinal$fit)
 summary(tannerfinal) 
 bayes_R2(tannerfinal)
 
+#Posterior Predictive check 
+pp_check(tannerfinal, nsamples = 100) #PPC graphical check
+pp_check(tannerfinal, type = "stat_grouped", stat = "mean", group = "year") #PPC for mean
+
+#Trace plot 
+trace_plot(tannerfinal$fit)
+pdf("./figs/trace_tannerfinal.pdf", width = 6, height = 4)
+
 #Area under the curve for final model 
 
 
@@ -345,7 +373,6 @@ bayes_R2(tannerfinal)
 tannerfinal <- readRDS("./output/tannerfinal.rds")
 
 #Size
-
 ## 95% CI
 ce1s_1 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
                               probs = c(0.025, 0.975))
@@ -370,11 +397,10 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
   labs(x = "Carapace width (mm)", y = "Probability positive") +
-  ggtitle("Tanner1 - posterior mean & 80 / 90 / 95% credible intervals")
-ggsave("./figs/tanner1_size_effect.png", width = 6, height = 4, units = 'in')
+  ggtitle("Tanner Final - posterior mean & 80 / 90 / 95% credible intervals")
+ggsave("./figs/tannerfinal_size_effect.png", width = 6, height = 4, units = 'in')
 
 ##PC1 (day of year, depth, longitude)
-
 ## 95% CI
 ce1s_1 <- conditional_effects(tannerfinal , effect = "pc1", re_formula = NA,
                               probs = c(0.025, 0.975))
@@ -399,8 +425,22 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
   labs(x = "PC1 (day of year, depth, longitude)", y = "Probability positive") +
-  ggtitle("Tanner1 - posterior mean & 80 / 90 / 95% credible intervals")
-ggsave("./figs/tanner1_pc1_effect.png", width = 6, height = 4, units = 'in')
+  ggtitle("Tanner Final - posterior mean & 80 / 90 / 95% credible intervals")
+ggsave("./figs/tannerfinal_pc1_effect.png", width = 6, height = 4, units = 'in')
+
+##Year
+ce1s_1 <- conditional_effects(tannerfinal, effect = "year", re_formula = NA,
+                              probs = c(0.025, 0.975))  
+
+plot <- ce1s_1$year %>%
+  dplyr::select(year, estimate__, lower__, upper__)
+
+ggplot(plot, aes(year, estimate__)) +
+  geom_point(size=3) +
+  geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
+  ylab("Probability positive") +
+  ggtitle("Tanner Final - posterior mean & 95% credible interval")
+ggsave("./figs/tannerfinal_year_effect.png", width = 6, height = 4, units = 'in')
 
 #####################################################
 #Predictions for best model 
@@ -424,7 +464,7 @@ new.dat$year <- map_chr(str_split(new.dat$yr_ind_st, "_"), 1)
 new.dat$index <- map_chr(str_split(new.dat$yr_ind_st, "_"), 2)
 new.dat$station <- map_chr(str_split(new.dat$yr_ind_st, "_"), 3)
 
-posterior.predict <- posterior_epred(tanner1, newdata = new.dat)
+posterior.predict <- posterior_epred(tannerfinal, newdata = new.dat)
 
 tanner.estimate <- data.frame(species = "tanner",
                               estimate = mean(posterior.predict),
