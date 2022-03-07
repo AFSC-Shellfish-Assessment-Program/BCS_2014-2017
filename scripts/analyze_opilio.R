@@ -1,11 +1,18 @@
-# analyze infection dynamics in C. opilio
+# notes ----
+#Analyze BCS infection dynamics in C.opilio using Bayesian multivariate models 
 
+# Author: Mike Litzow (additions by Erin Fedewa)
+# last updated: 2022/1/31
+
+#load
 library(tidyverse)
-library(plyr)
+library(lubridate)
 library(rstan)
 library(brms)
 library(bayesplot)
 library(MARSS)
+library(corrplot)
+library(factoextra)
 source("./scripts/stan_utils.R")
 
 # set plot theme
@@ -14,125 +21,102 @@ theme_set(theme_bw())
 # colorblind palette
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
 
-
 # load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
 
-# add julian date
-dat$julian = lubridate::yday(lubridate::parse_date_time(x = dat$start_date, orders="mdy", tz="US/Alaska"))                                
-
-# examine Snow crab cpue distribution                                    
-ggplot(dat, aes(snow70under_cpue)) +
-  geom_histogram(bins = 30, fill = "grey", color = "black")
-
-ggplot(dat, aes(snow70under_cpue^0.25)) +
-  geom_histogram(bins = 30, fill = "grey", color = "black")
-
-# separate opilio data
-opilio.dat <- dat %>%
-  dplyr::filter(species_name == "Chionoecetes opilio",
-                index_site %in% c(4, 5, 6),
-                year %in% c(2015:2017),
-                sex %in% c(1, 2),
-                pcr_result %in% c(1, 0)) %>%
-  dplyr::select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_latitude, bottom_depth, gear_temperature, snow70under_cpue) %>%
-  dplyr::rename(pcr = pcr_result,
-                station = gis_station,
-                latitude = mid_latitude,
-                depth = bottom_depth,
-                temperature = gear_temperature,
-                index = index_site,
-                fourth.root.cpue70 = snow70under_cpue) %>%
-  dplyr::mutate(year = as.factor(year),
-                sex = as.factor(sex),
-                index = as.factor(index),
-                station = as.factor(station),
-                fourth.root.cpue70 = fourth.root.cpue70^0.25) # transforming cpue here
+########################################
+#Data Manipulation
+dat %>%
+  mutate(julian=yday(parse_date_time(start_date, "mdy", "US/Alaska"))) %>%  #add julian date 
+  filter(species_name == "Chionoecetes opilio",
+         index_site %in% c(4, 5, 6),
+         year %in% c(2015:2017),
+         sex %in% c(1, 2),
+         pcr_result %in% c(1, 0)) %>%
+  select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_latitude, bottom_depth, 
+         gear_temperature, snow70under_cpue, snowimm_cpue) %>%
+  rename(pcr = pcr_result,
+         station = gis_station,
+         latitude = mid_latitude,
+         depth = bottom_depth,
+         temperature = gear_temperature,
+         index = index_site) %>%
+  mutate(year = as.factor(year),
+         sex = as.factor(sex),
+         index = as.factor(index),
+         station = as.factor(station),
+         fourth.root.cpue70 = snow70under_cpue^0.25,
+         fouth.root.cpueimm = snowimm_cpue^0.25) -> opilio.dat 
 
 nrow(opilio.dat) # 1511 samples!
 
-# appear to be some NAs - check?
-# looks like one row of NA in 	year == 2015, station == I-23
+#Check for missing data for PCA
+opilio.dat %>%
+  select(size, sex, year, index, station, julian, latitude, depth, temperature) %>%
+  filter(!complete.cases(.)) 
+ # Looks like just one missing size obsv. 
 
-check <- opilio.dat$year == 2015 & opilio.dat$station == "I-23"
-opilio.dat[check,]
-
-# fix
-
-opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","julian"] <-
-  opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","julian"][1]
-
-opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","latitude"] <-
-  opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","latitude"][1]
-
-opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","depth"] <-
-  opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","depth"][1]
-
-opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","temperature"] <-
-  opilio.dat[opilio.dat$year == 2015 & opilio.dat$station == "I-23","temperature"][1]
-
-# and one NA size!
-
-apply(is.na(opilio.dat), 2, which)  
-
-opilio.dat <- opilio.dat[-apply(is.na(opilio.dat), 2, which)$size,]
-
-# need dimension reduction for exogenous covariates (day, depth, longitude, temperature, cpue)
-
-pca.dat <- opilio.dat %>%
-  dplyr::group_by(station, year) %>%
-  dplyr::summarise(julian = mean(julian),
+#Dimension reduction for exogenous covariates 
+opilio.dat %>%
+  group_by(year, station) %>%
+  summarise(julian = mean(julian),
                    depth = mean(depth),
                    latitude = mean(latitude),
                    temperature = mean(temperature),
-                   fourth.root.cpue70 = mean(fourth.root.cpue70))
+                   fourth.root.cpue70 = mean(fourth.root.cpue70)) -> pca.dat
 
 cor(pca.dat[,3:7]) # some lower correlations than for tanner
+corrplot(cor(pca.dat[,3:7])) 
 
-
-# plot - for the paper?
-plot <- data.frame(Day_of_year = pca.dat$julian,
-                   Depth_m = pca.dat$depth,
-                   N_latitude = pca.dat$latitude,
-                   Bottom_temperature_C = pca.dat$temperature,
-                   Fourth_root_CPUE_70 = pca.dat$fourth.root.cpue70,
-                   year = as.numeric(as.character(pca.dat$year))) %>%
-  tidyr::pivot_longer(cols = c(-Day_of_year, -year))
-
-ggplot(plot, aes(Day_of_year, value)) +
+# plot exogenous variables
+pca.dat %>%
+  rename(`Day of Year` = julian,
+         `Depth (m)` = depth,
+         `Latitude (N)` = latitude,
+         `Bottom Temperature (C)` = temperature,
+         `Fourth root CPUE` = fourth.root.cpue70) %>%
+  pivot_longer(cols=`Depth (m)`:`Fourth root CPUE`) %>%
+  ggplot(aes(`Day of Year`, value)) +
   geom_point(color = "grey100") +
   geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = F, color = "black", lwd = 0.3) +
   facet_wrap(~name, scales = "free_y", ncol = 1) +
   geom_point(aes(color = as.factor(year))) +
   scale_color_manual(values = cb[c(2,4,6)]) +
-  theme(legend.title = element_blank())
-
+  theme(legend.title = element_blank()) +
+  theme(axis.title.y = element_blank())
 ggsave("./figs/opilio_julian_temp_depth_long_cpue.png", width = 4.5, height = 7.5, units = 'in')
 
-# DFA is hard here b/c we want to include time as one of the time series, *and* we don't have continuous observations for DFA
 
-# following Tanner analysis - fit a PCA
-# use julian, latitude, temperature
-PCA <- prcomp(pca.dat[,c(3,5,6)], scale = T, center = T)
-PCA$rotation
-PCA$x
-pca.dat$pc1 <- PCA$x[,1]
+#Fit a PCA with all exogenous covariates
+PCA <- prcomp(pca.dat[,3:7], scale = T, center = T)
+PCA$rotation #PC1 loads strongly/equally on all but depth 
+get_eig(PCA)
 
-# and join pc1 back in
+#Fit PCA without Depth and extract PC1 for model runs 
+PCA2 <- prcomp(pca.dat[,c(3,5:7)], scale = T, center = T)
+PCA2$rotation #Variable loadings
+get_eig(PCA2)
+fviz_eig(PCA2) #Scree plot: PC1 explains ~72% of variance 
+fviz_pca_var(PCA2, col.var = "contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = TRUE)     
+pca.dat$pc1 <- PCA2$x[,1]
+
+#Join pc1 back in
 pc1 <- pca.dat %>%
   dplyr::select(station, year, pc1)
 
+#Final dataset for modeling 
 opilio.dat <- left_join(opilio.dat, pc1)
 
-## define model formula
+####################################################
+#Model 1: base model with size, pc1 and random year/index/station intercept 
 
-opilio1_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + (1 | year/index/station)) # simple first model
+## define model formula
+opilio1_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + (1 | year/index/station)) 
 
 ## Show default priors
-
 get_prior(opilio1_formula, opilio.dat, family = bernoulli(link = "logit"))
 
-## fit binomial mode --------------------------------------
+## fit binomial Model 1
 opilio1 <- brm(opilio1_formula,
                data = opilio.dat,
                family = bernoulli(link = "logit"),
@@ -140,32 +124,28 @@ opilio1 <- brm(opilio1_formula,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-
+#Save output
 saveRDS(opilio1, file = "./output/opilio1.rds")
-
 opilio1 <- readRDS("./output/opilio1.rds")
+
+#Model convergence diagnostics 
 check_hmc_diagnostics(opilio1$fit)
 neff_lowest(opilio1$fit)
 rhat_highest(opilio1$fit)
 summary(opilio1)
 bayes_R2(opilio1)
-
-# plot(opilio1$criteria$loo, "k")
 plot(conditional_smooths(opilio1), ask = FALSE)
-# posterior predictive test
+plot(opilio1)
 
-y <- opilio.dat$pcr
-yrep_opilio1  <- fitted(opilio1, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_opilio1[sample(nrow(yrep_opilio1), 25), ]) +
-  ggtitle("opilio1")
+#Posterior Predictive check 
+pp_check(opilio1, nsamples = 100)
 
-
-# pdf("./figs/trace_opilio1.pdf", width = 6, height = 4)
-trace_plot(opilio1$fit)
-# dev.off()
+#Trace plot 
+trace_plot(opilio1$fit) 
 
 ###################################################
-# add depth as covariate
+#Model 2: Base model + depth 
+  
 opilio2_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(depth, k = 4) + (1 | year/index/station))
 
 opilio2 <- brm(opilio2_formula,
@@ -175,106 +155,72 @@ opilio2 <- brm(opilio2_formula,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
+#Save output
 saveRDS(opilio2, file = "./output/opilio2.rds")
-
 opilio2 <- readRDS("./output/opilio2.rds")
+
+#Model convergence diagnostics 
 check_hmc_diagnostics(opilio2$fit)
 neff_lowest(opilio2$fit)
 rhat_highest(opilio2$fit)
-summary(opilio2) 
+summary(opilio2)
 bayes_R2(opilio2)
-
 plot(conditional_smooths(opilio2), ask = FALSE)
+plot(opilio2)
 
-# posterior predictive test
+#Posterior Predictive check 
+pp_check(opilio2, nsamples = 100)
 
-y <- opilio.dat$pcr
-yrep_opilio2_hier_bernoulli  <- fitted(opilio2_hier_bernoulli, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_opilio2_hier_bernoulli[sample(nrow(yrep_opilio2_hier_bernoulli), 25), ]) +
-  ggtitle("opilio2_hier_bernoulli")
+#Trace plot 
+trace_plot(opilio2$fit) 
 
 # model comparison
-loo(opilio1, opilio2) # depth does not improve prediction
-
+loo(opilio1, opilio2) #Mike, can amend the model 3 formula below if depth should be kept in?
 
 
 ###############################################################################################
-# examine cpue effect
+#Model 3: Base Model + Sex
 
-opilio3_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index/station))                      
+opilio3_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex + (1 | year/index/station))                      
 
 opilio3 <- brm(opilio3_formula,
-               data = opilio.dat,
-               family = bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500,
-               save_pars = save_pars(all = TRUE),
-               control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-# opilio3  <- add_criterion(opilio3, "loo",
-#                                          moment_match = TRUE)
-
-saveRDS(opilio3, file = "./output/opilio3.rds")
-
-opilio3 <- readRDS("./output/opilio3.rds")
-
-check_hmc_diagnostics(opilio3$fit)
-neff_lowest(opilio3$fit)
-rhat_highest(opilio3$fit)
-summary(opilio3) 
-bayes_R2(opilio3)
-# plot(opilio3$criteria$loo, "k")
-
-plot(conditional_smooths(opilio3), ask = FALSE)
-
-# posterior predictive test
-
-y <- opilio.dat$pcr
-yrep_opilio3  <- fitted(opilio3, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_opilio3[sample(nrow(yrep_opilio3), 25), ]) +
-  ggtitle("opilio3")
-
-# let's run the model comparison
-loo(opilio1, opilio2, opilio3) # opilio3
-
-###############################################################################################
-# see if a sex effect improves model
-
-opilio4_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fourth.root.cpue70, k = 4) + sex + (1 | year/index/station))                      
-
-opilio4 <- brm(opilio4_formula,
                data = opilio.dat,
                family =bernoulli(link = "logit"),
                cores = 4, chains = 4, iter = 2500,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-# opilio4  <- add_criterion(opilio4, "loo",
-#                                          moment_match = TRUE)
+#Save output
+saveRDS(opilio3, file = "./output/opilio3.rds")
+opilio3 <- readRDS("./output/opilio3.rds")
 
-saveRDS(opilio4, file = "./output/opilio4.rds")
+#Model convergence diagnostics 
+check_hmc_diagnostics(opilio3$fit)
+neff_lowest(opilio3$fit)
+rhat_highest(opilio3$fit)
+summary(opilio3)
+bayes_R2(opilio3)
+plot(conditional_smooths(opilio3), ask = FALSE)
+plot(opilio3)
 
-opilio4 <- readRDS("./output/opilio4.rds")
+#Posterior Predictive check 
+pp_check(opilio3, nsamples = 100)
 
-check_hmc_diagnostics(opilio4$fit)
-neff_lowest(opilio4$fit)
-rhat_highest(opilio4$fit)
-summary(opilio4) # increased indicdence for sex2 (female?)
-bayes_R2(opilio4)
-# plot(opilio4$criteria$loo, "k")
+#Trace plot 
+trace_plot(opilio3$fit) 
 
-# posterior predictive test
-
-y <- opilio.dat$pcr
-yrep_opilio4  <- fitted(opilio4, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_opilio4[sample(nrow(yrep_opilio4), 25), ]) +
-  ggtitle("opilio4")
-
-
-# let's run the model comparison
-loo(opilio1, opilio2, opilio3, opilio4)
+# model comparison
+loo(opilio1, opilio2, opilio3) 
 
 ######################################################
-# finally, check for a year effect
+
+#Need to include year next...will wait for line 213 results 
+
+
+
+
+
+# Model 5: Base model + CPUE + Sex + Year
 
 opilio5_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + 
                          s(fourth.root.cpue70, k = 4) + sex + year + (1 | year/index/station))                      
@@ -286,13 +232,13 @@ opilio5 <- brm(opilio5_formula,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-# opilio5  <- add_criterion(opilio5, "loo",
-#                                          moment_match = TRUE)
+# opilio5  <- add_criterion(opilio5, "loo", moment_match = TRUE)
 
+#Save Output
 saveRDS(opilio5, file = "./output/opilio5.rds")
-
 opilio5 <- readRDS("./output/opilio5.rds")
 
+#Convergence Diagnostics 
 check_hmc_diagnostics(opilio5$fit)
 neff_lowest(opilio5$fit) # too low!
 rhat_highest(opilio5$fit)
@@ -301,7 +247,6 @@ bayes_R2(opilio5)
 # plot(opilio5$criteria$loo, "k")
 
 # posterior predictive test
-
 y <- opilio.dat$pcr
 yrep_opilio5  <- fitted(opilio5, scale = "response", summary = FALSE)
 ppc_dens_overlay(y = y, yrep = yrep_opilio5[sample(nrow(yrep_opilio5), 25), ]) +
@@ -311,7 +256,12 @@ ppc_dens_overlay(y = y, yrep = yrep_opilio5[sample(nrow(yrep_opilio5), 25), ]) +
 trace_plot(opilio5$fit)
 # dev.off()
 
-## additional suggested model - size, pc1, year
+#Model comparison
+#loo(opilio1, opilio2, opilio3, opilio4, opilio5)
+
+############################################
+## Model 6: Base Model + Year 
+
 opilio6_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station))                      
 
 opilio6 <- brm(opilio6_formula,
@@ -321,13 +271,13 @@ opilio6 <- brm(opilio6_formula,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-# opilio6  <- add_criterion(opilio6, "loo",
-#                                          moment_match = TRUE)
+# opilio6  <- add_criterion(opilio6, "loo", moment_match = TRUE)
 
+#Save Output
 saveRDS(opilio6, file = "./output/opilio6.rds")
-
 opilio6 <- readRDS("./output/opilio6.rds")
 
+#Convergence Diagnostics 
 check_hmc_diagnostics(opilio6$fit)
 neff_lowest(opilio6$fit) # too low!
 rhat_highest(opilio6$fit)
@@ -336,7 +286,6 @@ bayes_R2(opilio6)
 # plot(opilio6$criteria$loo, "k")
 
 # posterior predictive test
-
 y <- opilio.dat$pcr
 yrep_opilio6  <- fitted(opilio6, scale = "response", summary = FALSE)
 ppc_dens_overlay(y = y, yrep = yrep_opilio6[sample(nrow(yrep_opilio6), 25), ]) +
@@ -346,13 +295,11 @@ ppc_dens_overlay(y = y, yrep = yrep_opilio6[sample(nrow(yrep_opilio6), 25), ]) +
 trace_plot(opilio6$fit)
 # dev.off()
 
-#######
-
+#Model comparison
 model.comp <- loo(opilio1, opilio2, opilio3, opilio4, opilio5, opilio6) # opilio5 marginally the best!
-
 model.comp
 
-# save model comparison for ms.
+#Save model comparison for ms.
 forms <- data.frame(formula=c(as.character(opilio5_formula)[1],
                               as.character(opilio4_formula)[1],
                               as.character(opilio3_formula)[1],
@@ -364,7 +311,8 @@ comp.out <- cbind(forms, model.comp$diffs[,1:2])
 write.csv(comp.out, "./output/opilio_model_comp.csv")
 
 ###########################
-# plot predicted effects from best model (opilio5)
+# Plot predicted effects from best model (opilio5)
+
 opilio5 <- readRDS("./output/opilio5.rds")
 
 # first year
