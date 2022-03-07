@@ -17,7 +17,7 @@ library(tidyverse)
 #############################
 #Append maturity 
 pcr_master <- read.csv("./data/PCR_2014_2017.csv")
-head(pcr_master)
+
 #Determine male maturity via distribution-based cutline method/clutch codes
 pcr_master %>%
   mutate(maturity = case_when((Sex == 2 & Clutch > 0) ~ 1,
@@ -25,15 +25,15 @@ pcr_master %>%
                               (grepl("opilio", Species_Name) & Sex == 1 & (log(Chela) < -2.20640 + 1.13523 * log(Size)))| (grepl("opilio", Species_Name) & Sex == 1 & Size < 50) ~ 0,
                               (grepl("bairdi", Species_Name) & Sex == 1 & (log(Chela) < -2.67411 + 1.18884 * log(Size)))| (grepl("bairdi", Species_Name) & Sex == 1 & Size < 60) ~ 0, 
                               (grepl("opilio", Species_Name) & Sex == 1 & (log(Chela) > -2.20640 + 1.13523 * log(Size))) ~ 1,
-                              (grepl("bairdi", Species_Name) & Sex == 1 & (log(Chela) > -2.67411 + 1.18884  * log(Size))) ~ 1)) -> pcr_mat
+                              (grepl("bairdi", Species_Name) & Sex == 1 & (log(Chela) > -2.67411 + 1.18884  * log(Size))) ~ 1)) %>%
+  select(-X) -> pcr_mat
 
 #############################
-#Append haul data 
+#Append EBS haul data 
 tanner_haul <- read.csv("./data/haul_tanner.csv")
-head(tanner_haul)
 snow_haul <- read.csv("./data/haul_opilio.csv", skip=5)
-head(snow_haul)
 
+#Combine Tanner and snow haul files 
 tanner_haul %>%
   bind_rows(snow_haul) %>% 
   filter(AKFIN_SURVEY_YEAR %in% c(2014, 2015, 2016, 2017),
@@ -42,10 +42,9 @@ tanner_haul %>%
          BOTTOM_DEPTH,GEAR_TEMPERATURE) %>%
   distinct() ->tanner_snow
 
-glimpse(tanner_snow)
-
 #Join haul and PCR datasets 
 pcr_mat %>% 
+  filter(Index_Site %in% c(1:6)) %>% #remove NBS index site for join 
   as_tibble() %>%
   left_join(tanner_snow, by = c("CRUISE", "VESSEL", "HAUL", "STATIONID"="GIS_STATION")) %>%
   rename_with(tolower) -> mat_haul
@@ -88,4 +87,7 @@ snow_haul %>%
 write_csv(cpue, file="./data/pcr_haul_master.csv")
   
   
-  
+snow_haul %>%
+  filter(AKFIN_SURVEY_YEAR == 2015,
+         HAUL_TYPE==3) -> snow_test
+write_csv(snow_test, file="./data/snow_test.csv")  
