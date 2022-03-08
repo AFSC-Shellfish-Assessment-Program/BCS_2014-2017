@@ -1,9 +1,6 @@
 # notes ----
 #Analyze BCS infection dynamics in C.opilio using Bayesian multivariate models 
 
-# Author: Mike Litzow (additions by Erin Fedewa)
-# last updated: 2022/1/31
-
 #load
 library(tidyverse)
 library(lubridate)
