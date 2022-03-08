@@ -130,7 +130,7 @@ check_hmc_diagnostics(opilio1$fit)
 neff_lowest(opilio1$fit)
 rhat_highest(opilio1$fit)
 summary(opilio1)
-bayes_R2(opilio1)
+# bayes_R2(opilio1)
 plot(conditional_smooths(opilio1), ask = FALSE)
 plot(opilio1)
 
@@ -161,7 +161,7 @@ check_hmc_diagnostics(opilio2$fit)
 neff_lowest(opilio2$fit)
 rhat_highest(opilio2$fit)
 summary(opilio2)
-bayes_R2(opilio2)
+# bayes_R2(opilio2)
 plot(conditional_smooths(opilio2), ask = FALSE)
 plot(opilio2)
 
@@ -172,7 +172,9 @@ pp_check(opilio2, nsamples = 100)
 trace_plot(opilio2$fit) 
 
 # model comparison
-loo(opilio1, opilio2) #Mike, can amend the model 3 formula below if depth should be kept in?
+opilio1 <- readRDS("./output/opilio1.rds")
+opilio2 <- readRDS("./output/opilio2.rds")
+loo(opilio1, opilio2) # oplio1 better, no support for adding depth
 
 
 ###############################################################################################
@@ -186,6 +188,9 @@ opilio3 <- brm(opilio3_formula,
                cores = 4, chains = 4, iter = 2500,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
+
+## NAs excluded??
+
 
 #Save output
 saveRDS(opilio3, file = "./output/opilio3.rds")
