@@ -130,15 +130,15 @@ check_hmc_diagnostics(opilio1$fit)
 neff_lowest(opilio1$fit)
 rhat_highest(opilio1$fit)
 summary(opilio1)
-# bayes_R2(opilio1)
+bayes_R2(opilio1)
+
+#Plots
 plot(conditional_smooths(opilio1), ask = FALSE)
 plot(opilio1)
+trace_plot(opilio1$fit)
 
 #Posterior Predictive check 
 pp_check(opilio1, nsamples = 100)
-
-#Trace plot 
-trace_plot(opilio1$fit) 
 
 ###################################################
 #Model 2: Base model + depth 
@@ -161,21 +161,18 @@ check_hmc_diagnostics(opilio2$fit)
 neff_lowest(opilio2$fit)
 rhat_highest(opilio2$fit)
 summary(opilio2)
-# bayes_R2(opilio2)
+bayes_R2(opilio2)
+
+#Plot
 plot(conditional_smooths(opilio2), ask = FALSE)
 plot(opilio2)
+trace_plot(opilio2$fit)
 
 #Posterior Predictive check 
 pp_check(opilio2, nsamples = 100)
 
-#Trace plot 
-trace_plot(opilio2$fit) 
-
 # model comparison
-opilio1 <- readRDS("./output/opilio1.rds")
-opilio2 <- readRDS("./output/opilio2.rds")
 loo(opilio1, opilio2) # oplio1 better, no support for adding depth
-
 
 ###############################################################################################
 #Model 3: Base Model + Sex
@@ -189,9 +186,6 @@ opilio3 <- brm(opilio3_formula,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-## NAs excluded??
-
-
 #Save output
 saveRDS(opilio3, file = "./output/opilio3.rds")
 opilio3 <- readRDS("./output/opilio3.rds")
@@ -202,105 +196,52 @@ neff_lowest(opilio3$fit)
 rhat_highest(opilio3$fit)
 summary(opilio3)
 bayes_R2(opilio3)
-plot(conditional_smooths(opilio3), ask = FALSE)
-plot(opilio3)
 
 #Posterior Predictive check 
 pp_check(opilio3, nsamples = 100)
 
-#Trace plot 
+#Plots
+plot(conditional_smooths(opilio3), ask = FALSE)
+plot(opilio3)
+
 trace_plot(opilio3$fit) 
 
 # model comparison
-loo(opilio1, opilio2, opilio3) 
+loo(opilio1, opilio2, opilio3) #Sex marginally improves model 
 
 ######################################################
+# Model 4: Base model + Sex + Year
 
-#Need to include year next...will wait for line 213 results 
+opilio4_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex +
+                       year + (1 | year/index/station))                      
 
-
-
-
-
-# Model 5: Base model + CPUE + Sex + Year
-
-opilio5_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + 
-                         s(fourth.root.cpue70, k = 4) + sex + year + (1 | year/index/station))                      
-
-opilio5 <- brm(opilio5_formula,
+opilio4 <- brm(opilio4_formula,
                data = opilio.dat,
                family =bernoulli(link = "logit"),
                cores = 4, chains = 4, iter = 4000, # increasing iterations 
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-# opilio5  <- add_criterion(opilio5, "loo", moment_match = TRUE)
-
 #Save Output
-saveRDS(opilio5, file = "./output/opilio5.rds")
-opilio5 <- readRDS("./output/opilio5.rds")
+saveRDS(opilio4, file = "./output/opilio4.rds")
+opilio4 <- readRDS("./output/opilio4.rds")
 
 #Convergence Diagnostics 
-check_hmc_diagnostics(opilio5$fit)
-neff_lowest(opilio5$fit) # too low!
-rhat_highest(opilio5$fit)
-summary(opilio5) # no evidence of a year effect
-bayes_R2(opilio5)
-# plot(opilio5$criteria$loo, "k")
+check_hmc_diagnostics(opilio4$fit)
+neff_lowest(opilio4$fit) # too low!
+rhat_highest(opilio4$fit)
+summary(opilio4) 
+#bayes_R2(opilio4)
 
-# posterior predictive test
-y <- opilio.dat$pcr
-yrep_opilio5  <- fitted(opilio5, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_opilio5[sample(nrow(yrep_opilio5), 25), ]) +
-  ggtitle("opilio5")
-
-# png("./figs/trace_opilio5.png", width = 6, height = 4, units = 'in', res = 300)
-trace_plot(opilio5$fit)
-# dev.off()
+#Plots
+plot(conditional_smooths(opilio4), ask = FALSE)
+plot(opilio4)
+trace_plot(opilio4$fit)
 
 #Model comparison
-#loo(opilio1, opilio2, opilio3, opilio4, opilio5)
+loo(opilio1, opilio2, opilio3, opilio4)
 
 ############################################
-## Model 6: Base Model + Year 
-
-opilio6_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station))                      
-
-opilio6 <- brm(opilio6_formula,
-               data = opilio.dat,
-               family =bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 4000, # increasing iterations 
-               save_pars = save_pars(all = TRUE),
-               control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-# opilio6  <- add_criterion(opilio6, "loo", moment_match = TRUE)
-
-#Save Output
-saveRDS(opilio6, file = "./output/opilio6.rds")
-opilio6 <- readRDS("./output/opilio6.rds")
-
-#Convergence Diagnostics 
-check_hmc_diagnostics(opilio6$fit)
-neff_lowest(opilio6$fit) # too low!
-rhat_highest(opilio6$fit)
-summary(opilio6) # no evidence of a year effect
-bayes_R2(opilio6)
-# plot(opilio6$criteria$loo, "k")
-
-# posterior predictive test
-y <- opilio.dat$pcr
-yrep_opilio6  <- fitted(opilio6, scale = "response", summary = FALSE)
-ppc_dens_overlay(y = y, yrep = yrep_opilio6[sample(nrow(yrep_opilio6), 25), ]) +
-  ggtitle("opilio6")
-
-# png("./figs/trace_opilio6.png", width = 6, height = 4, units = 'in', res = 300)
-trace_plot(opilio6$fit)
-# dev.off()
-
-#Model comparison
-model.comp <- loo(opilio1, opilio2, opilio3, opilio4, opilio5, opilio6) # opilio5 marginally the best!
-model.comp
-
 #Save model comparison for ms.
 forms <- data.frame(formula=c(as.character(opilio5_formula)[1],
                               as.character(opilio4_formula)[1],

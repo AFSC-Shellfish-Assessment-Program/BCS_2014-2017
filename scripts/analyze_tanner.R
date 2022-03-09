@@ -13,6 +13,7 @@ library(bayesplot)
 library(MARSS)
 library(corrplot)
 library(factoextra)
+library(ROCR)
 source("./scripts/stan_utils.R")
 
 # set plot theme
@@ -88,6 +89,7 @@ PCA$rotation #Variable loadings
 #PCA result plots 
 fviz_eig(PCA) #Scree plot: PC1 explains ~60% of variance 
 fviz_pca_var(PCA, col.var = "contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = TRUE)     
+get_eig(PCA)
 
 #Refit PCA with just long/depth/julian day and extract pc1 only for models 
 PCA2 <- prcomp(pca.dat[,3:5], scale = T, center = T)
@@ -130,14 +132,19 @@ neff_lowest(tanner1$fit)
 rhat_highest(tanner1$fit)
 summary(tanner1)
 bayes_R2(tanner1)
+
+#Plots
 plot(conditional_smooths(tanner1), ask = FALSE)
 plot(tanner1)
+trace_plot(tanner1$fit) 
+mcmc_plot(tanner1, type = "areas", prob = 0.95)
+
+
+#Compute posterior predictive probabilities to assess predictive performance 
+
 
 #Posterior Predictive check 
 pp_check(tanner1, nsamples = 100)
-
-#Trace plot 
-trace_plot(tanner1$fit) 
 
 ###################################################
 # Model 2: Add temperature to base model 1 
@@ -162,8 +169,10 @@ rhat_highest(tanner2$fit)
 summary(tanner2) 
 bayes_R2(tanner2)
 
-#Trace plot 
-trace_plot(tanner2$fit) 
+#Plots
+plot(conditional_smooths(tanner2), ask = FALSE)
+plot(tanner2)
+trace_plot(tanner2$fit)
 
 # model comparison
 loo(tanner1, tanner2, moment_match = TRUE) # Temp does NOT improve prediction
@@ -192,7 +201,9 @@ summary(tanner3) # no evidence of a CPUE effect
 bayes_R2(tanner3)
 plot(conditional_smooths(tanner3), ask = FALSE)
 
-#Trace plot 
+#Plots
+plot(conditional_smooths(tanner3), ask = FALSE)
+plot(tanner3)
 trace_plot(tanner3$fit)
 
 #Model comparison
@@ -223,7 +234,9 @@ rhat_highest(tanner4$fit)
 summary(tanner4) # no evidence of a sex effect
 bayes_R2(tanner4)
 
-#Trace plot 
+#Plots
+plot(conditional_smooths(tanner4), ask = FALSE)
+plot(tanner4)
 trace_plot(tanner4$fit)
 
 #Model comparison
@@ -252,7 +265,9 @@ rhat_highest(tanner5$fit)
 summary(tanner5) # no evidence of a year effect
 bayes_R2(tanner5)
 
-#Trace plot 
+#Plots
+plot(conditional_smooths(tanner5), ask = FALSE)
+plot(tanner5)
 trace_plot(tanner5$fit)
 
 #Model comparison
@@ -287,18 +302,15 @@ loo(tanner5, tanner6, moment_match = TRUE) #year/site/station group level term m
 #########################################
 #Full model comparison
 
-#All models - are different random structures directly comparable here????
-model.comp <- loo(tanner1, tanner2, tanner3, tanner4, tanner5, tanner6, moment_match=TRUE)
+#All models 
+  #Not including model 6 here
+model.comp <- loo(tanner1, tanner2, tanner3, tanner4, tanner5, moment_match=TRUE)
   model.comp
-
-# Model weights based on WAIC
-waic_wts <- model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, weights = "waic")
-# Weights based on Pseudo-BMA (with Bayesian bootstrap)
 pbma_wts <- loo_model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, method = "pseudobma")
-  round(cbind(waic_wts, pbma_wts), 3)
+  pbma_wts #tanner 5 gets highest weight 
 
 #Save model output 
-sjPlot::tab_model(tanner1, tanner2, tanner3, tanner4, tanner5, tanner6)
+sjPlot::tab_model(tanner1, tanner2, tanner3, tanner4, tanner5)
 
 forms <- data.frame(formula=c(as.character(tanner5_formula)[1],
                               as.character(tanner3_formula)[1],
@@ -310,13 +322,18 @@ forms <- data.frame(formula=c(as.character(tanner5_formula)[1],
 comp.out <- cbind(forms, model.comp$diffs[,1:2])
 write.csv(comp.out, "./output/tanner_model_comp.csv")
 
-# Prediction from stacking by Yao et al. (2018)
+##########################################
+#Exploring model averaging/stacking to incorporate all models for prediction/propagating
+  #uncertainty b/c all models are so similar 
+
+# Prediction from model stacking by Yao et al. (2018)
 pred_stacking <- pp_average(tanner1, tanner2, tanner3, tanner4, tanner5, method = "predict")
 
 # Prediction from pseudo BMA
 # 1. Obtain predictions from each model
 pred_m12345 <- map(list(tanner1, tanner2, tanner3, tanner4, tanner5), posterior_predict)
-# 2. Obtain model weights (pbma_wts as previously obtained)
+# 2. Obtain model weights based on Pseudo-BMA (with Bayesian bootstrap)
+pbma_wts <- loo_model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, method = "pseudobma") #can change to method="waic"
 # 3. Obtain weighted predictions
 pred_pbma <- map2(pred_m12345, pbma_wts, `*`) %>% 
   reduce(`+`) %>% 
@@ -325,10 +342,12 @@ pred_pbma <- map2(pred_m12345, pbma_wts, `*`) %>%
 ggplot(tibble(stacking = pred_stacking[ , "Estimate"], 
               pbma = pred_pbma[ , "Estimate"]), aes(x = pbma, y = stacking)) + 
   geom_point() + 
-  geom_abline(intercept = 0, slope = 1)
+  geom_abline(intercept = 0, slope = 1) #two methods give very similar predictions
 
 ###########################
 #Final Model:  Run best tanner5 model with 10,000 iterations and set seed 
+
+#CHANGE to tanner 1
 
 tannerfinal_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station)) 
 
@@ -360,13 +379,21 @@ pdf("./figs/trace_tannerfinal.pdf", width = 6, height = 4)
 
 #Area under the curve for final model 
 
+draws_beta0 <- as.matrix(tannerfinal, variable = "b_Intercept")
+logistic_beta0 <- plogis(draws_beta0)
+# Summarize the posterior distribution
+psych::describe(logistic_beta0)
 
+mcmc_areas(tannerfinal, pars = "b_Intercept", 
+           transformations = list("b_Intercept" = "plogis"), bw = "SJ")
 
-
-
-
-
-
+# Compute AUC for predicting prevalence with the model
+Prob <- predict(tanner1, type="response")
+Prob <- Prob[,1]
+Pred <- prediction(Prob, as.vector(pull(tanner.dat, pcr)))
+AUC <- performance(Pred, measure = "auc")
+AUC <- AUC@y.values[[1]]
+AUC #Looks good!
 
 ################################
 #Plot predicted effects from best model 
@@ -374,13 +401,13 @@ tannerfinal <- readRDS("./output/tannerfinal.rds")
 
 #Size
 ## 95% CI
-ce1s_1 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
+ce1s_1 <- conditional_effects(tanner1 , effect = "size", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
+ce1s_2 <- conditional_effects(tanner1 , effect = "size", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
+ce1s_3 <- conditional_effects(tanner1 , effect = "size", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$size
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
