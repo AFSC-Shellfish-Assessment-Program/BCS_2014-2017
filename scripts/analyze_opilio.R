@@ -231,7 +231,7 @@ check_hmc_diagnostics(opilio4$fit)
 neff_lowest(opilio4$fit) # too low!
 rhat_highest(opilio4$fit)
 summary(opilio4) 
-#bayes_R2(opilio4)
+bayes_R2(opilio4)
 
 #Plots
 plot(conditional_smooths(opilio4), ask = FALSE)
@@ -239,14 +239,60 @@ plot(opilio4)
 trace_plot(opilio4$fit)
 
 #Model comparison
-loo(opilio1, opilio2, opilio3, opilio4)
+loo(opilio1, opilio2, opilio3, opilio4) #Including sex and year improves model 
+
+#######################################################
+#Final Model:  Run best opilio4 model with 10,000 iterations and set seed 
+
+opiliofinal <- brm(opilio4_formula,
+                   data = opilio.dat,
+                   family = bernoulli(link = "logit"),
+                   cores = 4, chains = 4, iter = 10000,
+                   save_pars = save_pars(all = TRUE), seed = 1, 
+                   control = list(adapt_delta = 0.999, max_treedepth = 14))
+
+#Save model output 
+saveRDS(opiliofinal, file = "./output/opiliofinal.rds")
+opiliofinal <- readRDS("./output/opiliofinal.rds")
+
+#Model convergence diagnostics
+check_hmc_diagnostics(opiliofinal$fit)
+neff_lowest(opiliofinal$fit)
+rhat_highest(opiliofinal$fit)
+summary(opiliofinal) 
+bayes_R2(opiliofinal)
+
+#Posterior Predictive check 
+pp_check(opiliofinal, nsamples = 100) #PPC graphical check
+pp_check(opiliofinal, type = "stat_grouped", stat = "mean", group = "year") #PPC for mean
+
+#Trace plot 
+trace_plot(opiliofinal$fit)
+pdf("./figs/trace_opiliofinal.pdf", width = 6, height = 4)
+
+#Area under the curve for final model 
+
+draws_beta0 <- as.matrix(opiliofinal, variable = "b_Intercept")
+logistic_beta0 <- plogis(draws_beta0)
+# Summarize the posterior distribution
+psych::describe(logistic_beta0)
+
+mcmc_areas(opiliofinal, pars = "b_Intercept", 
+           transformations = list("b_Intercept" = "plogis"), bw = "SJ")
+
+# Compute AUC for predicting prevalence with the model
+Prob <- predict(tanner1, type="response")
+Prob <- Prob[,1]
+Pred <- prediction(Prob, as.vector(pull(tanner.dat, pcr)))
+AUC <- performance(Pred, measure = "auc")
+AUC <- AUC@y.values[[1]]
+AUC 
+
 
 ############################################
 #Save model comparison for ms.
-forms <- data.frame(formula=c(as.character(opilio5_formula)[1],
-                              as.character(opilio4_formula)[1],
+forms <- data.frame(formula=c(as.character(opilio4_formula)[1],
                               as.character(opilio3_formula)[1],
-                              as.character(opilio6_formula)[1],
                               as.character(opilio1_formula)[1],
                               as.character(opilio2_formula)[1]))
 
@@ -254,12 +300,12 @@ comp.out <- cbind(forms, model.comp$diffs[,1:2])
 write.csv(comp.out, "./output/opilio_model_comp.csv")
 
 ###########################
-# Plot predicted effects from best model (opilio5)
+# Plot predicted effects from best model 
 
-opilio5 <- readRDS("./output/opilio5.rds")
+opiliofinal  <- readRDS("./output/opiliofinal .rds")
 
 # first year
-ce1s_1 <- conditional_effects(opilio5, effect = "year", re_formula = NA,
+ce1s_1 <- conditional_effects(opiliofinal, effect = "year", re_formula = NA,
                               probs = c(0.025, 0.975))  
 
 plot <- ce1s_1$year %>%
@@ -269,12 +315,12 @@ ggplot(plot, aes(year, estimate__)) +
   geom_point(size=3) +
   geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
   ylab("Probability positive") +
-  ggtitle("Opilio5 - posterior mean & 95% credible interval")
+  ggtitle("Opilio Final - posterior mean & 95% credible interval")
 
-ggsave("./figs/opilio5_year_effect.png", width = 2, height = 3, units = 'in')
+ggsave("./figs/opiliofinal_year_effect.png", width = 2, height = 3, units = 'in')
 
 # then sex
-ce1s_1 <- conditional_effects(opilio5, effect = "sex", re_formula = NA,
+ce1s_1 <- conditional_effects(opiliofinal, effect = "sex", re_formula = NA,
                               probs = c(0.025, 0.975))  
 
 plot <- ce1s_1$sex %>%
@@ -284,20 +330,20 @@ ggplot(plot, aes(sex, estimate__)) +
   geom_point(size=3) +
   geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
   ylab("Probability positive") +
-  ggtitle("Opilio5 - posterior mean & 95% credible interval")
+  ggtitle("Opilio Final - posterior mean & 95% credible interval")
 
-ggsave("./figs/opilio5_sex_effect.png", width = 2, height = 3, units = 'in')
+ggsave("./figs/opiliofinal_sex_effect.png", width = 2, height = 3, units = 'in')
 
 # then size
 
 ## 95% CI
-ce1s_1 <- conditional_effects(opilio5, effect = "size", re_formula = NA,
+ce1s_1 <- conditional_effects(opiliofinal, effect = "size", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(opilio5, effect = "size", re_formula = NA,
+ce1s_2 <- conditional_effects(opiliofinal, effect = "size", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(opilio5, effect = "size", re_formula = NA,
+ce1s_3 <- conditional_effects(opiliofinal, effect = "size", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$size
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -314,21 +360,21 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
   labs(x = "Carapace width (mm)", y = "Probability positive") +
-  ggtitle("opilio5 - posterior mean & 80 / 90 / 95% credible intervals")
+  ggtitle("opilio Final - posterior mean & 80 / 90 / 95% credible intervals")
 
-ggsave("./figs/opilio5_size_effect.png", width = 6, height = 4, units = 'in')
+ggsave("./figs/opiliofinal_size_effect.png", width = 6, height = 4, units = 'in')
 
 
 ## cpue
 
 ## 95% CI
-ce1s_1 <- conditional_effects(opilio5, effect = "fourth.root.cpue70", re_formula = NA,
+ce1s_1 <- conditional_effects(opiliofinal, effect = "fourth.root.cpue70", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(opilio5, effect = "fourth.root.cpue70", re_formula = NA,
+ce1s_2 <- conditional_effects(opiliofinal, effect = "fourth.root.cpue70", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(opilio5, effect = "fourth.root.cpue70", re_formula = NA,
+ce1s_3 <- conditional_effects(opiliofinal, effect = "fourth.root.cpue70", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$fourth.root.cpue70
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -345,9 +391,9 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
   labs(x = "fourth.root.cpue70", y = "Probability positive") +
-  ggtitle("opilio5 - posterior mean & 80 / 90 / 95% credible intervals")
+  ggtitle("opilio Final - posterior mean & 80 / 90 / 95% credible intervals")
 
-ggsave("./figs/opilio5_fourth.root.cpue70_effect.png", width = 6, height = 4, units = 'in')
+ggsave("./figs/opiliofinal_fourth.root.cpue70_effect.png", width = 6, height = 4, units = 'in')
 
 
 ## predict overall prevalence

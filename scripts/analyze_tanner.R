@@ -345,13 +345,9 @@ ggplot(tibble(stacking = pred_stacking[ , "Estimate"],
   geom_abline(intercept = 0, slope = 1) #two methods give very similar predictions
 
 ###########################
-#Final Model:  Run best tanner5 model with 10,000 iterations and set seed 
+#Final Model:  Run tanner1 model with 10,000 iterations and set seed 
 
-#CHANGE to tanner 1
-
-tannerfinal_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station)) 
-
-tannerfinal <- brm(tannerfinal_formula,
+tannerfinal <- brm(tanner1_formula,
                data = tanner.dat,
                family = bernoulli(link = "logit"),
                cores = 4, chains = 4, iter = 10000,
