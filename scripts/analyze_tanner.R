@@ -2,7 +2,7 @@
 #Analyze BCS infection dynamics in C. bairdi using Bayesian multivariate models 
 
 # Authors: Mike Litzow & Erin Fedewa
-# last updated: 2022/2/28
+# last updated: 2022/3/18
 
 #load
 library(tidyverse)
@@ -14,10 +14,8 @@ library(MARSS)
 library(corrplot)
 library(factoextra)
 library(ROCR)
+library(tidybayes)
 source("./scripts/stan_utils.R")
-
-# set plot theme
-theme_set(theme_bw())
 
 # colorblind palette
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
@@ -49,10 +47,10 @@ dat %>%
          index = as.factor(index),
          station = as.factor(station),
          depth = as.numeric(depth),
-         fourth.root.cpue70 = tanner70under_cpue^0.25,
+         fourth.root.cpue70 = tanner70under_cpue^0.25, 
          fouth.root.cpueimm = tannerimm_cpue^0.25) -> tanner.dat 
 
-#Dimension reduction for exogenous covariates 
+#Dimension reduction for highly correlated exogenous covariates 
 tanner.dat %>%
   group_by(station, year) %>%
   summarise(julian = mean(julian),
@@ -62,7 +60,7 @@ tanner.dat %>%
                    fourth.root.cpue70 = mean(fourth.root.cpue70)) -> pca.dat
 
 cor(pca.dat[,3:7]) 
-corrplot(cor(pca.dat[,3:7])) #temp no longer correlated with others, cpue weakly collinear with depth
+corrplot(cor(pca.dat[,3:7])) 
 
 #Plot 
 pca.dat %>%
@@ -126,7 +124,7 @@ tanner1 <- brm(tanner1_formula,
 saveRDS(tanner1, file = "./output/tanner1.rds")
 tanner1 <- readRDS("./output/tanner1.rds")
 
-#Model convergence diagnostics 
+#MCMC convergence diagnostics 
 check_hmc_diagnostics(tanner1$fit)
 neff_lowest(tanner1$fit)
 rhat_highest(tanner1$fit)
@@ -138,13 +136,48 @@ plot(conditional_smooths(tanner1), ask = FALSE)
 plot(tanner1)
 trace_plot(tanner1$fit) 
 mcmc_plot(tanner1, type = "areas", prob = 0.95)
+mcmc_acf(tanner1, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Lag >2 in some cases 
+
+#Posterior Predictive check to assess predictive performance 
+pp_check(tanner1, ndraws = 100) #Not meaningful b/c pcr can only be 0 or 1
+
+yrep <- posterior_predict(tanner1, draws = 500) #matrix of draws from posterior distribution
+ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
+#Assuming I've done this correctly, the histogram shows a distribution of the fraction of pcr
+  #outcomes given all values explored in in the posterior draws. Observed results (black line)
+  #are near the most likely results that the model predicts 
+
+get_variables(tanner1)
+
+tanner1 %>%
+  spread_draws(r_year[year,term])
 
 
-#Compute posterior predictive probabilities to assess predictive performance 
+
+bayes_rintercept %>% 
+  spread_draws(r_county[county]) %>%
+  ggplot(aes(y = fct_rev(county), x = r_county, fill=fct_rev(county))) +
+  geom_vline(aes(xintercept=0), alpha=0.5, linetype=2) +
+  stat_halfeyeh(.width = c(0.5, .95), point_interval= median_hdi,
+                alpha=0.8) +
+  labs(x = "Estimate Values", y = "County" ) +
+  ggtitle("Random Intercept Estimates per county",
+          subtitle = "Median + 95% HPD Interval ") +
+  theme_bw() +
+  theme(legend.position = "None")
 
 
-#Posterior Predictive check 
-pp_check(tanner1, nsamples = 100)
+
+
+
+
+
+
+
+
+
+
+
 
 ###################################################
 # Model 2: Add temperature to base model 1 
@@ -173,9 +206,14 @@ bayes_R2(tanner2)
 plot(conditional_smooths(tanner2), ask = FALSE)
 plot(tanner2)
 trace_plot(tanner2$fit)
+mcmc_plot(tanner2, type = "areas", prob = 0.95)
+
+#Posterior Predictive check 
+yrep <- posterior_predict(tanner2, draws = 500) #matrix of draws from posterior distribution
+ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
 
 # model comparison
-loo(tanner1, tanner2, moment_match = TRUE) # Temp does NOT improve prediction
+loo(tanner1, tanner2, moment_match = TRUE) # Temp does NOT improve prediction, though predictive performance is very similar
 
 ###############################################################################################
 # Model 3: Add CPUE to base model 
@@ -199,16 +237,20 @@ neff_lowest(tanner3$fit)
 rhat_highest(tanner3$fit)
 summary(tanner3) # no evidence of a CPUE effect
 bayes_R2(tanner3)
-plot(conditional_smooths(tanner3), ask = FALSE)
 
 #Plots
 plot(conditional_smooths(tanner3), ask = FALSE)
 plot(tanner3)
 trace_plot(tanner3$fit)
+mcmc_plot(tanner3, type = "areas", prob = 0.95)
+
+#Posterior Predictive check 
+yrep <- posterior_predict(tanner3, draws = 500) #matrix of draws from posterior distribution
+ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
 
 #Model comparison
 loo(tanner1, tanner2, tanner3, moment_match = TRUE) #Same elpd b/w tanner3 and base model 
-#No difference between predictive power of the two models so let's go with most 
+#No difference between predictive capacity of the two models so let's stick with most 
   #parsimonious base model 
 
 ###############################################################################################
@@ -238,6 +280,12 @@ bayes_R2(tanner4)
 plot(conditional_smooths(tanner4), ask = FALSE)
 plot(tanner4)
 trace_plot(tanner4$fit)
+mcmc_plot(tanner4, type = "areas", prob = 0.95)
+
+#Posterior predictive check
+yrep <- posterior_predict(tanner4, draws = 500) #matrix of draws from posterior distribution
+ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
+ppc_stat_grouped(y = tanner.dat$pcr, yrep = yrep, group = tanner.dat$sex, stat = mean)
 
 #Model comparison
 loo(tanner1, tanner2, tanner3, tanner4, moment_match = TRUE) #no improvement by adding sex 
@@ -269,6 +317,12 @@ bayes_R2(tanner5)
 plot(conditional_smooths(tanner5), ask = FALSE)
 plot(tanner5)
 trace_plot(tanner5$fit)
+mcmc_plot(tanner5, type = "areas", prob = 0.95)
+
+#Posterior predictive check
+yrep <- posterior_predict(tanner5, draws = 500) #matrix of draws from posterior distribution
+ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
+ppc_stat_grouped(y = tanner.dat$pcr, yrep = yrep, group = tanner.dat$year, stat = mean)
 
 #Model comparison
 loo(tanner1, tanner2, tanner3, tanner4, tanner5, moment_match = TRUE) # tanner5 marginally the best
@@ -302,8 +356,7 @@ loo(tanner5, tanner6, moment_match = TRUE) #year/site/station group level term m
 #########################################
 #Full model comparison
 
-#All models 
-  #Not including model 6 here
+#All models (not including model 6 here)
 model.comp <- loo(tanner1, tanner2, tanner3, tanner4, tanner5, moment_match=TRUE)
   model.comp
 pbma_wts <- loo_model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, method = "pseudobma")
@@ -316,8 +369,7 @@ forms <- data.frame(formula=c(as.character(tanner5_formula)[1],
                               as.character(tanner3_formula)[1],
                               as.character(tanner1_formula)[1],
                               as.character(tanner2_formula)[1],
-                              as.character(tanner4_formula)[1],
-                              as.character(tanner6_formula)[1]))
+                              as.character(tanner4_formula)[1]))
 
 comp.out <- cbind(forms, model.comp$diffs[,1:2])
 write.csv(comp.out, "./output/tanner_model_comp.csv")
