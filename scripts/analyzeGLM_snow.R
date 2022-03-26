@@ -32,38 +32,36 @@ dat %>%
          year %in% c(2015:2017),
          sex %in% c(1, 2),
          pcr_result %in% c(1, 0)) %>%
-  dplyr::select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_latitude, bottom_depth, gear_temperature, opilio70under_cpue) %>%
-  dplyr::rename(pcr = pcr_result,
+  select(pcr_result, size, sex, index_site, year, gis_station, julian, mid_latitude, bottom_depth, gear_temperature, opilio70under_cpue) %>%
+  rename(pcr = pcr_result,
                 station = gis_station,
                 latitude = mid_latitude,
                 depth = bottom_depth,
                 temperature = gear_temperature,
                 index = index_site,
                 fourth.root.cpue70 = opilio70under_cpue) %>%
-  dplyr::mutate(year = as.factor(year),
+  mutate(year = as.factor(year),
                 sex = as.factor(sex),
                 index = as.factor(index),
                 station = as.factor(station),
                 fourth.root.cpue70 = fourth.root.cpue70^0.25) -> opilio.dat # transforming cpue here
 
-nrow(opilio.dat) # 1285 samples!
+nrow(opilio.dat) # 1511 samples!
 
 #Check for missing data 
 opilio.dat %>%
-  dplyr::group_by(size, sex, index, julian, latitude, depth, temperature) %>%
-  dplyr::summarise(num_na = sum(is.na(.)))
+  select(size, sex, index, julian, latitude, depth, temperature) %>%
+  filter(!complete.cases(.)) 
+  summarise(num_na = sum(is.na(.)))
 # Looks like one row of NA in year == 2015, station == I-23
 
-#Fix and overwrite 
-opilio.dat %>%
-  filter(year==2015,
-         station=="I-23") %>%
-  fill(julian,latitude,depth,temperature, .direction="down") -> opilio.dat
-
-# and one NA size!
-apply(is.na(opilio.dat), 2, which)  
-
-opilio.dat <- opilio.dat[-apply(is.na(opilio.dat), 2, which)$size,]
+  #Fix and overwrite 
+  opilio.dat %>%
+    mutate(julian = replace_na(189),
+           latitude = replace_na(57.67492),
+           depth = replace_na(100),
+           temperature = replace_na(2.3)) %>%
+    filter(!is.na(size)) -> opilio.dat
 
 #Data exploration
 opilio.dat %>%
@@ -101,14 +99,14 @@ opilio.dat %>%
 
 #Check for correlation between continuous covariates 
 opilio.dat %>%
-  dplyr::select(size, julian, latitude, depth, temperature, fourth.root.cpue70) %>%
+  select(size, julian, latitude, depth, temperature, fourth.root.cpue70) %>%
   as.data.frame() -> cov
 corrplot(cor(cov)) #temperature, lat and julian day are problematic 
 
 # need dimension reduction for exogenous covariates (day, depth, lat, temperature, cpue)
 pca.dat <- opilio.dat %>%
-  dplyr::group_by(station, year) %>%
-  dplyr::summarise(julian = mean(julian),
+  group_by(station, year) %>%
+  summarise(julian = mean(julian),
                    depth = mean(depth),
                    latitude = mean(latitude),
                    temperature = mean(temperature),

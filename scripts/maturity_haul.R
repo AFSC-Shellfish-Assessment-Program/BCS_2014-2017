@@ -80,14 +80,10 @@ snow_haul %>%
   rename(year = akfin_survey_year) %>%
   select(-area_swept.x, -area_swept.y) -> cpue
 
-
 ##################################################
 
 #Write new master csv                               
 write_csv(cpue, file="./data/pcr_haul_master.csv")
   
   
-snow_haul %>%
-  filter(AKFIN_SURVEY_YEAR == 2015,
-         HAUL_TYPE==3) -> snow_test
-write_csv(snow_test, file="./data/snow_test.csv")  
+

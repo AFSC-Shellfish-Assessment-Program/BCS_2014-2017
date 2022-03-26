@@ -1,8 +1,7 @@
 # notes ----
-#Analyze BCS infection dynamics in C. bairdi using Bayesian multivariate models 
-
-# Authors: Mike Litzow & Erin Fedewa
-# last updated: 2022/3/18
+#Analyze BCS infection dynamics in C. bairdi using Bayesian multivariate models
+#Investigate factors that may be important in driving disease prevalence 
+  #(host size/sex, depth, temperature, lat/long, immature crab density, date of sampling)
 
 #load
 library(tidyverse)
@@ -13,15 +12,41 @@ library(bayesplot)
 library(MARSS)
 library(corrplot)
 library(factoextra)
+library(patchwork)
+library(broom.mixed)
 library(ROCR)
 library(tidybayes)
+library(knitr)
+library(loo)
+library(sjPlot)
 source("./scripts/stan_utils.R")
+
+# load PCR data 
+dat <- read.csv("./data/pcr_haul_master.csv")
 
 # colorblind palette
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
 
-# load PCR data 
-dat <- read.csv("./data/pcr_haul_master.csv")
+##################################
+#Functions 
+
+# Fisher Pearson skew 
+skew <- function(y){
+  n <- length(y)
+  dif <- y - mean(y)
+  skew_stat <- (sqrt(n-1)/(n-2))*n *(sum(dif^3)/(sum(dif^2)^1.5))
+  return(skew_stat)
+}
+
+
+#Plot PPC test statistic plots
+posterior_stat_plot <- function(obs, model, samples=1000, statistic="mean"){
+  fig <- ppc_stat(y = obs, 
+                  yrep = posterior_predict(model, ndraws = samples),  #matrix of draws from posterior distribution
+                  stat = statistic)
+  
+  return(fig)
+}
 
 ########################################
 #Data Manipulation
@@ -47,8 +72,8 @@ dat %>%
          index = as.factor(index),
          station = as.factor(station),
          depth = as.numeric(depth),
-         fourth.root.cpue70 = tanner70under_cpue^0.25, 
-         fouth.root.cpueimm = tannerimm_cpue^0.25) -> tanner.dat 
+         fourth.root.cpue70 = tanner70under_cpue^0.25, #Transformed CPUE of tanner <70mm CW
+         fouth.root.cpueimm = tannerimm_cpue^0.25) -> tanner.dat #Transformed CPUE of immature tanner (Jensen protocol cutline)
 
 #Dimension reduction for highly correlated exogenous covariates 
 tanner.dat %>%
@@ -104,7 +129,7 @@ pc1 <- pca.dat %>%
 tanner.dat <- left_join(tanner.dat, pc1)
 
 #####################################################
-#Model 1: base model with size, pc1 and random year/index/station intercept 
+#Model 1: base model with crab size, pc1 and random year/index/station intercept 
 
 ## define model formula
 tanner1_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4)  + (1 | year/index/station))
@@ -131,55 +156,39 @@ rhat_highest(tanner1$fit)
 summary(tanner1)
 bayes_R2(tanner1)
 
-#Plots
-plot(conditional_smooths(tanner1), ask = FALSE)
+#Diagnostic Plots
 plot(tanner1)
-trace_plot(tanner1$fit) 
+plot(conditional_smooths(tanner1), ask = FALSE)
 mcmc_plot(tanner1, type = "areas", prob = 0.95)
-mcmc_acf(tanner1, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Lag >2 in some cases 
+mcmc_rhat(rhat(tanner1)) #Potential scale reduction: All rhats < 1.1
+mcmc_acf(tanner1, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_neff(neff_ratio(tanner1)) #Effective sample size: All ratios > 0.1
 
 #Posterior Predictive check to assess predictive performance 
 pp_check(tanner1, ndraws = 100) #Not meaningful b/c pcr can only be 0 or 1
 
-yrep <- posterior_predict(tanner1, draws = 500) #matrix of draws from posterior distribution
-ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
-#Assuming I've done this correctly, the histogram shows a distribution of the fraction of pcr
-  #outcomes given all values explored in in the posterior draws. Observed results (black line)
-  #are near the most likely results that the model predicts 
+#PPC: Mean and skewness summary statistics - run functions above 
+y_obs <- tanner.dat$pcr #Observed values
 
-get_variables(tanner1)
+color_scheme_set("red")
+pmean1 <- posterior_stat_plot(y_obs, tanner1) + 
+  theme(legend.text = element_text(size=8), 
+        legend.title = element_text(size=8)) +
+  labs(x="Mean", title="Mean")
 
-tanner1 %>%
-  spread_draws(r_year[year,term])
+color_scheme_set("gray")
+pskew1 <- posterior_stat_plot(y_obs,tanner1, statistic = "skew") +
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size=8)) +
+  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
 
+pmean1 + pskew1 
 
+#Histograms show distribution of the fraction of pcr outcomes given all values explored 
+  #in the posterior draws. Observed results (black/red line) are near the most likely results 
+  #that the model predicts- look good!
 
-bayes_rintercept %>% 
-  spread_draws(r_county[county]) %>%
-  ggplot(aes(y = fct_rev(county), x = r_county, fill=fct_rev(county))) +
-  geom_vline(aes(xintercept=0), alpha=0.5, linetype=2) +
-  stat_halfeyeh(.width = c(0.5, .95), point_interval= median_hdi,
-                alpha=0.8) +
-  labs(x = "Estimate Values", y = "County" ) +
-  ggtitle("Random Intercept Estimates per county",
-          subtitle = "Median + 95% HPD Interval ") +
-  theme_bw() +
-  theme(legend.position = "None")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-###################################################
+#################################################
 # Model 2: Add temperature to base model 1 
 
 tanner2_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(temperature, k = 4) + (1 | year/index/station))
@@ -195,28 +204,41 @@ tanner2 <- brm(tanner2_formula,
 saveRDS(tanner2, file = "./output/tanner2.rds")
 tanner2 <- readRDS("./output/tanner2.rds")
 
-#Convergence diagnostics
+#MCMC convergence diagnostics 
 check_hmc_diagnostics(tanner2$fit)
 neff_lowest(tanner2$fit)
 rhat_highest(tanner2$fit)
-summary(tanner2) 
+summary(tanner2)
 bayes_R2(tanner2)
 
-#Plots
-plot(conditional_smooths(tanner2), ask = FALSE)
+#Diagnostic Plots
 plot(tanner2)
-trace_plot(tanner2$fit)
+plot(conditional_smooths(tanner2), ask = FALSE)
 mcmc_plot(tanner2, type = "areas", prob = 0.95)
+mcmc_rhat(rhat(tanner2)) #Potential scale reduction: All rhats < 1.1
+mcmc_acf(tanner2, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_neff(neff_ratio(tanner2)) #Effective sample size: All ratios > 0.1
 
-#Posterior Predictive check 
-yrep <- posterior_predict(tanner2, draws = 500) #matrix of draws from posterior distribution
-ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
+#Posterior Predictive Check: Mean and skewness summary statistics 
+color_scheme_set("red")
+pmean1 <- posterior_stat_plot(y_obs, tanner2) + 
+  theme(legend.text = element_text(size=8), 
+        legend.title = element_text(size=8)) +
+  labs(x="Mean", title="Mean")
+
+color_scheme_set("gray")
+pskew1 <- posterior_stat_plot(y_obs,tanner2, statistic = "skew") +
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size=8)) +
+  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
+
+pmean1 + pskew1
 
 # model comparison
 loo(tanner1, tanner2, moment_match = TRUE) # Temp does NOT improve prediction, though predictive performance is very similar
 
 ###############################################################################################
-# Model 3: Add CPUE to base model 
+# Model 3: Add CPUE (fourth-root transformed) to base model 
 
 tanner3_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index/station))                      
 
@@ -231,27 +253,40 @@ tanner3 <- brm(tanner3_formula,
 saveRDS(tanner3, file = "./output/tanner3.rds")
 tanner3 <- readRDS("./output/tanner3.rds")
 
-#Convergence Diagnostics 
+#MCMC convergence diagnostics 
 check_hmc_diagnostics(tanner3$fit)
 neff_lowest(tanner3$fit)
 rhat_highest(tanner3$fit)
-summary(tanner3) # no evidence of a CPUE effect
+summary(tanner3)
 bayes_R2(tanner3)
 
-#Plots
-plot(conditional_smooths(tanner3), ask = FALSE)
+#Diagnostic Plots
 plot(tanner3)
-trace_plot(tanner3$fit)
+plot(conditional_smooths(tanner3), ask = FALSE)
 mcmc_plot(tanner3, type = "areas", prob = 0.95)
+mcmc_rhat(rhat(tanner3)) #Potential scale reduction: All rhats < 1.1
+mcmc_acf(tanner3, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_neff(neff_ratio(tanner3)) #Effective sample size: All ratios > 0.1
 
-#Posterior Predictive check 
-yrep <- posterior_predict(tanner3, draws = 500) #matrix of draws from posterior distribution
-ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
+#Posterior Predictive Check: Mean and skewness summary statistics 
+color_scheme_set("red")
+pmean1 <- posterior_stat_plot(y_obs, tanner3) + 
+  theme(legend.text = element_text(size=8), 
+        legend.title = element_text(size=8)) +
+  labs(x="Mean", title="Mean")
+
+color_scheme_set("gray")
+pskew1 <- posterior_stat_plot(y_obs,tanner3, statistic = "skew") +
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size=8)) +
+  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
+
+pmean1 + pskew1
 
 #Model comparison
-loo(tanner1, tanner2, tanner3, moment_match = TRUE) #Same elpd b/w tanner3 and base model 
-#No difference between predictive capacity of the two models so let's stick with most 
-  #parsimonious base model 
+loo(tanner1, tanner3, moment_match = TRUE) #Same elpd b/w tanner3 and base model 
+#No difference between predictive capacity of the two models....stick with more 
+  #parsimonious base model?
 
 ###############################################################################################
 #Model 4: Add sex to base model 
@@ -269,26 +304,38 @@ tanner4 <- brm(tanner4_formula,
 saveRDS(tanner4, file = "./output/tanner4.rds")
 tanner4 <- readRDS("./output/tanner4.rds")
 
-#Convergence diagnostics 
+#MCMC convergence diagnostics 
 check_hmc_diagnostics(tanner4$fit)
 neff_lowest(tanner4$fit)
 rhat_highest(tanner4$fit)
-summary(tanner4) # no evidence of a sex effect
+summary(tanner4)
 bayes_R2(tanner4)
 
-#Plots
-plot(conditional_smooths(tanner4), ask = FALSE)
+#Diagnostic Plots
 plot(tanner4)
-trace_plot(tanner4$fit)
+plot(conditional_smooths(tanner4), ask = FALSE)
 mcmc_plot(tanner4, type = "areas", prob = 0.95)
+mcmc_rhat(rhat(tanner4)) #Potential scale reduction: All rhats < 1.1
+mcmc_acf(tanner4, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_neff(neff_ratio(tanner4)) #Effective sample size: All ratios > 0.1
 
-#Posterior predictive check
-yrep <- posterior_predict(tanner4, draws = 500) #matrix of draws from posterior distribution
-ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
-ppc_stat_grouped(y = tanner.dat$pcr, yrep = yrep, group = tanner.dat$sex, stat = mean)
+#Posterior Predictive Check: Mean and skewness summary statistics 
+color_scheme_set("red")
+pmean1 <- posterior_stat_plot(y_obs, tanner4) + 
+  theme(legend.text = element_text(size=8), 
+        legend.title = element_text(size=8)) +
+  labs(x="Mean", title="Mean")
+
+color_scheme_set("gray")
+pskew1 <- posterior_stat_plot(y_obs,tanner4, statistic = "skew") +
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size=8)) +
+  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
+
+pmean1 + pskew1
 
 #Model comparison
-loo(tanner1, tanner2, tanner3, tanner4, moment_match = TRUE) #no improvement by adding sex 
+loo(tanner1, tanner4, moment_match = TRUE) #no improvement by adding sex 
 
 ######################################################
 # Model 5: Add year effect to base model 
@@ -306,64 +353,81 @@ tanner5 <- brm(tanner5_formula,
 saveRDS(tanner5, file = "./output/tanner5.rds")
 tanner5 <- readRDS("./output/tanner5.rds")
 
-#Convergence Diagnostics 
+#MCMC convergence diagnostics 
 check_hmc_diagnostics(tanner5$fit)
-neff_lowest(tanner5$fit) # too low!
+neff_lowest(tanner5$fit)
 rhat_highest(tanner5$fit)
-summary(tanner5) # no evidence of a year effect
+summary(tanner5)
 bayes_R2(tanner5)
 
-#Plots
-plot(conditional_smooths(tanner5), ask = FALSE)
+#Diagnostic Plots
 plot(tanner5)
-trace_plot(tanner5$fit)
+plot(conditional_smooths(tanner5), ask = FALSE)
 mcmc_plot(tanner5, type = "areas", prob = 0.95)
+mcmc_rhat(rhat(tanner5)) #Potential scale reduction: All rhats < 1.1
+mcmc_acf(tanner5, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_neff(neff_ratio(tanner5)) #Effective sample size: All ratios > 0.1
 
-#Posterior predictive check
-yrep <- posterior_predict(tanner5, draws = 500) #matrix of draws from posterior distribution
-ppc_stat(y = tanner.dat$pcr, yrep = yrep, stat = mean)
-ppc_stat_grouped(y = tanner.dat$pcr, yrep = yrep, group = tanner.dat$year, stat = mean)
+#Posterior Predictive Check: Mean and skewness summary statistics 
+color_scheme_set("red")
+pmean1 <- posterior_stat_plot(y_obs, tanner5) + 
+  theme(legend.text = element_text(size=8), 
+        legend.title = element_text(size=8)) +
+  labs(x="Mean", title="Mean")
+
+color_scheme_set("gray")
+pskew1 <- posterior_stat_plot(y_obs,tanner5, statistic = "skew") +
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size=8)) +
+  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
+
+pmean1 + pskew1
 
 #Model comparison
-loo(tanner1, tanner2, tanner3, tanner4, tanner5, moment_match = TRUE) # tanner5 marginally the best
-
-##########################################
-#Model 6:  Compare best population-level model (tanner5) with index/station group-level term 
-
-tanner6_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | index/station)) 
-
-tanner6 <- brm(tanner6_formula,
-                 data = tanner.dat,
-                 family = bernoulli(link = "logit"),
-                 cores = 4, chains = 4, iter = 2500,
-                 save_pars = save_pars(all = TRUE),
-                 control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save model output 
-saveRDS(tanner6, file = "./output/tanner6.rds")
-tanner6 <- readRDS("./output/tanner6.rds")
-
-#Model convergence diagnostics
-check_hmc_diagnostics(tanner6$fit)
-neff_lowest(tanner6$fit)
-rhat_highest(tanner6$fit)
-summary(tanner6) 
-bayes_R2(tanner6)
-
-#Model comparison between random effects structures
-loo(tanner5, tanner6, moment_match = TRUE) #year/site/station group level term much better 
+loo(tanner1, tanner5, moment_match = TRUE)
+  #tanner5 marginally the best, though both models very similar in predictive capacity
 
 #########################################
-#Full model comparison
+#Full Model Comparison
 
-#All models (not including model 6 here)
+#LOO-CV
 model.comp <- loo(tanner1, tanner2, tanner3, tanner4, tanner5, moment_match=TRUE)
   model.comp
-pbma_wts <- loo_model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, method = "pseudobma")
-  pbma_wts #tanner 5 gets highest weight 
+#All models very similar: Cross-validation is uncertain whether estimating additional 
+  #parameters improves predictive performance 
+  
+#Table of Rsq Values 
+rbind(bayes_R2(tanner1), 
+        bayes_R2(tanner2), 
+        bayes_R2(tanner3), 
+        bayes_R2(tanner4), 
+        bayes_R2(tanner5)) %>%
+  as_tibble() %>%
+  mutate(model = c("tanner1", "tanner2", "tanner3", "tanner4", "tanner5"),
+           r_square_posterior_mean = round(Estimate, digits = 2)) %>%
+  select(model, r_square_posterior_mean) #No surprise there....identical!
 
+#Model weights 
+  #PSIS-LOO
+loo1 <- loo(tanner1)
+loo2 <- loo(tanner2)
+loo3 <- loo(tanner3)
+loo4 <- loo(tanner4)
+loo5 <- loo(tanner5)
+
+loo_list <- list(loo1, loo2, loo3, loo4, loo5)
+
+#Compute and compare Pseudo-BMA weights without Bayesian bootstrap, 
+  #Pseudo-BMA+ weights with Bayesian bootstrap, and Bayesian stacking weights
+stacking_wts <- loo_model_weights(loo_list, method="stacking")
+pbma_BB_wts <- loo_model_weights(loo_list, method = "pseudobma")
+pbma_wts <- loo_model_weights(loo_list, method = "pseudobma", BB = FALSE)
+round(cbind(stacking_wts, pbma_wts, pbma_BB_wts),2)
+#Stacking gives zero weight to all other models but tanner 5, whereas BMA splits weights 
+  #between very similar models. Rationale enough to select Tanner5?
+  
 #Save model output 
-sjPlot::tab_model(tanner1, tanner2, tanner3, tanner4, tanner5)
+tab_model(tanner1, tanner2, tanner3, tanner4, tanner5)
 
 forms <- data.frame(formula=c(as.character(tanner5_formula)[1],
                               as.character(tanner3_formula)[1],
@@ -375,17 +439,18 @@ comp.out <- cbind(forms, model.comp$diffs[,1:2])
 write.csv(comp.out, "./output/tanner_model_comp.csv")
 
 ##########################################
-#Exploring model averaging/stacking to incorporate all models for prediction/propagating
-  #uncertainty b/c all models are so similar 
+#Exploring model averaging/stacking to incorporate all models for prediction/propagating uncertainty
+  #b/c all models are so similar and LOO-CV is less accurate for separating between small effect sizes 
 
-# Prediction from model stacking by Yao et al. (2018)
-pred_stacking <- pp_average(tanner1, tanner2, tanner3, tanner4, tanner5, method = "predict")
+# Predictions from model stacking by Yao et al. (2018)
+pred_stacking <- pp_average(tanner1, tanner2, tanner3, tanner4, tanner5, method = "posterior_predict")
+  #Stacking is the default method here...so it's likely computing posterior draws from just model 5? 
 
-# Prediction from pseudo BMA
+# Prediction from pseudo-Bayesian model averaging (BMA)
 # 1. Obtain predictions from each model
 pred_m12345 <- map(list(tanner1, tanner2, tanner3, tanner4, tanner5), posterior_predict)
 # 2. Obtain model weights based on Pseudo-BMA (with Bayesian bootstrap)
-pbma_wts <- loo_model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, method = "pseudobma") #can change to method="waic"
+pbma_wts <- loo_model_weights(tanner1, tanner2, tanner3, tanner4, tanner5, method = "pseudobma") 
 # 3. Obtain weighted predictions
 pred_pbma <- map2(pred_m12345, pbma_wts, `*`) %>% 
   reduce(`+`) %>% 
@@ -394,11 +459,67 @@ pred_pbma <- map2(pred_m12345, pbma_wts, `*`) %>%
 ggplot(tibble(stacking = pred_stacking[ , "Estimate"], 
               pbma = pred_pbma[ , "Estimate"]), aes(x = pbma, y = stacking)) + 
   geom_point() + 
-  geom_abline(intercept = 0, slope = 1) #two methods give very similar predictions
+  geom_abline(intercept = 0, slope = 1) +
+  labs(x="Pseudo-Bayesian Model Averaging", y="Model Stacking") #two methods give very similar predictions
+
+###############################
+#Explore tanner1 vrs tanner5....base model vrs highest weighted model 
+
+#1) Compare LOO ELPC pointwise comparisons
+
+#Compute LOO-CV for each model 
+loo1 <- loo(tanner1, save_psis = TRUE, cores = 2)
+loo2 <- loo(tanner5, save_psis = TRUE, cores = 2)
+
+# Obtain pointwise ELPD values
+elpd1 <- loo1$pointwise[,"elpd_loo"]
+elpd2 <- loo2$pointwise[,"elpd_loo"]
+
+# Build differences dataframe
+elpd_df <- tibble(diff12 = elpd2 - elpd1) %>% 
+  mutate(idx = 1:n())
+
+# Plot LOO ELPD Point-wise Model Comparisons 
+ggplot(elpd_df, aes(x = idx, y = diff12)) +
+  geom_point(alpha=0.7) +
+  geom_hline(aes(yintercept=0)) +
+  theme_bw() + 
+  labs(x = "Index", y = "ELPD Difference",
+       title = "Tanner5 - Tanner1 ") +
+  theme(title = element_text(size=8))
+#Positive ELPD differences would indicate tanner5 is a better performing model...
+  #but no apparent trend in differences b/w models across the range of observations 
+
+#2) Compare Pareto k diagnostics
+
+# Get khat values
+k_tanner1 <- loo1$psis_object$diagnostics$pareto_k
+k_tanner5 <- loo2$psis_object$diagnostics$pareto_k
+
+# Plot values
+tibble(idx = seq_along(k_tanner1), 
+       Tanner1 = k_tanner1,
+       Tanner5 = k_tanner5) %>% 
+  pivot_longer(cols = -idx) %>% 
+  ggplot(., aes(x = idx, y = value, color = name)) +
+  geom_point(alpha=0.5) +
+  geom_hline(aes(yintercept=0)) +
+  theme_bw() +
+  theme(legend.title= element_blank()) +
+  ylim(-1,1) +
+  facet_wrap(~ name) +
+  labs(y = expression(hat(k)), x ="Observation Index") +
+  ggtitle("Pareto-k diagnostic (PSIS diagnostic)")
+
+#No influence points (all khat <0.7). Tanner1 resolves khat values slightly better than tanner5
 
 ###########################
-#Final Model:  Run tanner1 model with 10,000 iterations and set seed 
+#Below is a preliminary final model using most parsimonious base model, though consensus in 
+  #bayes world is that there is no need for parsimony if models are sensible- and 
+  #choosing the most parsimonious model risks underestimating error of the predictive distribution
+  #So...use predictions from model averaging, or is there enough rationale for tanner5? 
 
+#Final Model:  Run tanner1 model with 10,000 iterations and set seed for reproducibility 
 tannerfinal <- brm(tanner1_formula,
                data = tanner.dat,
                family = bernoulli(link = "logit"),
@@ -410,30 +531,35 @@ tannerfinal <- brm(tanner1_formula,
 saveRDS(tannerfinal, file = "./output/tannerfinal.rds")
 tannerfinal <- readRDS("./output/tannerfinal.rds")
 
-#Model convergence diagnostics
+#MCMC convergence diagnostics 
 check_hmc_diagnostics(tannerfinal$fit)
 neff_lowest(tannerfinal$fit)
 rhat_highest(tannerfinal$fit)
-summary(tannerfinal) 
+summary(tannerfinal)
 bayes_R2(tannerfinal)
 
-#Posterior Predictive check 
-pp_check(tannerfinal, nsamples = 100) #PPC graphical check
-pp_check(tannerfinal, type = "stat_grouped", stat = "mean", group = "year") #PPC for mean
+#Diagnostic Plots
+plot(tannerfinal)
+plot(conditional_smooths(tannerfinal), ask = FALSE)
+mcmc_plot(tannerfinal, type = "areas", prob = 0.95)
+mcmc_rhat(rhat(tannerfinal)) #Potential scale reduction: All rhats < 1.1
+mcmc_acf(tannerfinal, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_neff(neff_ratio(tannerfinal)) #Effective sample size: All ratios > 0.1
 
-#Trace plot 
-trace_plot(tannerfinal$fit)
-pdf("./figs/trace_tannerfinal.pdf", width = 6, height = 4)
+#Posterior Predictive Check: Mean and skewness summary statistics 
+color_scheme_set("red")
+pmean1 <- posterior_stat_plot(y_obs, tannerfinal) + 
+  theme(legend.text = element_text(size=8), 
+        legend.title = element_text(size=8)) +
+  labs(x="Mean", title="Mean")
 
-#Area under the curve for final model 
+color_scheme_set("gray")
+pskew1 <- posterior_stat_plot(y_obs,tannerfinal, statistic = "skew") +
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size=8)) +
+  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
 
-draws_beta0 <- as.matrix(tannerfinal, variable = "b_Intercept")
-logistic_beta0 <- plogis(draws_beta0)
-# Summarize the posterior distribution
-psych::describe(logistic_beta0)
-
-mcmc_areas(tannerfinal, pars = "b_Intercept", 
-           transformations = list("b_Intercept" = "plogis"), bw = "SJ")
+pmean1 + pskew1
 
 # Compute AUC for predicting prevalence with the model
 Prob <- predict(tanner1, type="response")
@@ -441,11 +567,20 @@ Prob <- Prob[,1]
 Pred <- prediction(Prob, as.vector(pull(tanner.dat, pcr)))
 AUC <- performance(Pred, measure = "auc")
 AUC <- AUC@y.values[[1]]
-AUC #Looks good!
+AUC #Looks like our model discriminates fairly well 
+
+#Get posterior estimates with tidybayes 
+get_variables(tannerfinal)
+
+post_beta_means <- tannerfinal %>% 
+  gather_draws(b_Intercept, bs_ssize_1, bs_spc1_1,
+               sd_year__Intercept, `sd_year:index__Intercept`, 
+               `sd_year:index:station_Intercept`, sds_ssize_1, sds_spc1_1) %>% 
+  median_hdi() #Huh, stumped on how to use spread/gather_draws with multilevel models, 
+              #Might have to come back to this one 
 
 ################################
-#Plot predicted effects from best model 
-tannerfinal <- readRDS("./output/tannerfinal.rds")
+#Plot predicted effects from best model...should be much easier with tidybayes
 
 #Size
 ## 95% CI
@@ -503,22 +638,22 @@ ggplot(dat_ce) +
   ggtitle("Tanner Final - posterior mean & 80 / 90 / 95% credible intervals")
 ggsave("./figs/tannerfinal_pc1_effect.png", width = 6, height = 4, units = 'in')
 
-##Year
-ce1s_1 <- conditional_effects(tannerfinal, effect = "year", re_formula = NA,
-                              probs = c(0.025, 0.975))  
+##If using Tanner5 as final model with year effect....
+#ce1s_1 <- conditional_effects(tanner5, effect = "year", re_formula = NA,
+                              #probs = c(0.025, 0.975))  
 
-plot <- ce1s_1$year %>%
-  dplyr::select(year, estimate__, lower__, upper__)
+#plot <- ce1s_1$year %>%
+ # dplyr::select(year, estimate__, lower__, upper__)
 
-ggplot(plot, aes(year, estimate__)) +
-  geom_point(size=3) +
-  geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
-  ylab("Probability positive") +
-  ggtitle("Tanner Final - posterior mean & 95% credible interval")
-ggsave("./figs/tannerfinal_year_effect.png", width = 6, height = 4, units = 'in')
+#ggplot(plot, aes(year, estimate__)) +
+  #geom_point(size=3) +
+  #geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
+  #ylab("Probability positive") +
+  #ggtitle("Tanner Final - posterior mean & 95% credible interval")
+#ggsave("./figs/tannerfinal_year_effect.png", width = 6, height = 4, units = 'in')
 
 #####################################################
-#Predictions for best model 
+#Predictions for final model ...need to follow up on this 
 
 #Predict for size < 60mm
 new.dat <- tanner.dat %>%
@@ -561,9 +696,35 @@ ggplot(tanner.estimate) +
 ggsave("./figs/tanner estimate.png", width = 2, height = 2.5, units = 'in')
 
 ############################################################
-#Additional models tested:
+#Additional models tested for exploration of base model structure 
 
-#Tanner7- Base model plus tanner imm_cpue (Pam's cutoff) vrs <70mm CPUE 
+#Model 6:  Compare best population-level model (tanner5) with index/station group-level term 
+
+tanner6_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | index/station)) 
+
+tanner6 <- brm(tanner6_formula,
+               data = tanner.dat,
+               family = bernoulli(link = "logit"),
+               cores = 4, chains = 4, iter = 2500,
+               save_pars = save_pars(all = TRUE),
+               control = list(adapt_delta = 0.999, max_treedepth = 14))
+
+#Save model output 
+saveRDS(tanner6, file = "./output/tanner6.rds")
+tanner6 <- readRDS("./output/tanner6.rds")
+
+#Model convergence diagnostics
+check_hmc_diagnostics(tanner6$fit)
+neff_lowest(tanner6$fit)
+rhat_highest(tanner6$fit)
+summary(tanner6) 
+bayes_R2(tanner6)
+
+#Model comparison between random effects structures
+loo(tanner5, tanner6, moment_match = TRUE) #year/site/station group level term much better 
+
+#####
+#Model 7: Base model plus tanner imm_cpue (Pam's maturity cutoff in protocol) vrs <70mm CPUE 
 tanner7_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fouth.root.cpueimm, k = 4) + (1 | year/index/station))
 
 tanner7 <- brm(tanner7_formula,
@@ -585,9 +746,9 @@ summary(tanner7)
 bayes_R2(tanner7)
 
 #Model comparison
-loo(tanner1, tanner3, tanner5, tanner7, moment_match=TRUE)
+loo(tanner1, tanner3, tanner7, moment_match=TRUE) #Nearly no difference...let's stick with 70mm CPUE for simplicity
 
-############
+#####
 #Tanner 8: Base model plus tanner CPUE 70mm UNTRANSFORMED
 
 tanner8_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(tanner70under_cpue , k = 4) + (1 | year/index/station))
@@ -599,5 +760,5 @@ tanner8 <- brm(tanner8_formula,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-#Divergent transitions after multiple model run attempts 
+#Divergent transitions after multiple model run attempts....looks like transformed CPUE is best  
 
