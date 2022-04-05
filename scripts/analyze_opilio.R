@@ -14,7 +14,7 @@ library(corrplot)
 library(factoextra)
 library(patchwork)
 library(broom.mixed)
-library(ROCR)
+library(pROC)
 library(tidybayes)
 library(knitr)
 library(loo)
@@ -133,10 +133,10 @@ pc1 <- pca.dat %>%
 opilio.dat <- left_join(opilio.dat, pc1)
 
 ####################################################
-#Model 1: base model with size, pc1 and random year/index/station intercept 
+#Model 1: base model with size, pc1 and random year/index intercept 
 
 ## define model formula
-opilio1_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + (1 | year/index/station)) 
+opilio1_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + (1 | year/index)) 
 
 ## Show default priors
 get_prior(opilio1_formula, opilio.dat, family = bernoulli(link = "logit"))
@@ -161,7 +161,7 @@ summary(opilio1)
 bayes_R2(opilio1)
 
 #Diagnostic Plots
-plot(opilio1)
+plot(opilio1, ask = FALSE)
 plot(conditional_smooths(opilio1), ask = FALSE)
 mcmc_plot(opilio1, type = "areas", prob = 0.95)
 mcmc_rhat(rhat(opilio1)) #Potential scale reduction: All rhats < 1.1
@@ -185,10 +185,24 @@ pskew1 <- posterior_stat_plot(y_obs,opilio1, statistic = "skew") +
 
 pmean1 + pskew1 
 
+#PPC: Classify posterior probabilities and compare to observed 
+preds <- posterior_epred(opilio1)
+pred <- colMeans(preds) #averaging across draws 
+pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
+mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy fairly good 
+
+# Compute AUC for predicting prevalence with the model
+preds <- posterior_epred(opilio1) #posterior draws
+auc <- apply(preds, 1, function(x) {
+  roc <- roc(y_obs, x, quiet = TRUE)
+  auc(roc)
+})
+hist(auc) #Model discriminates fairly well 
+
 ###################################################
-#Model 2: Base model + depth 
+#Model 2: Base model with crab size, julian day and random year/index intercept
   
-opilio2_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(depth, k = 4) + (1 | year/index/station))
+opilio2_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + (1 | year/index))
 
 opilio2 <- brm(opilio2_formula,
                data = opilio.dat,
@@ -209,14 +223,16 @@ summary(opilio2)
 bayes_R2(opilio2)
 
 #Diagnostic Plots
-plot(opilio2)
+plot(opilio2, ask = FALSE)
 plot(conditional_smooths(opilio2), ask = FALSE)
 mcmc_plot(opilio2, type = "areas", prob = 0.95)
 mcmc_rhat(rhat(opilio2)) #Potential scale reduction: All rhats < 1.1
-mcmc_acf(opilio2, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_acf(opilio2, pars = c("b_Intercept", "bs_ssize_1", "bs_sjulian_1"), lags = 10) #Autocorrelation of selected parameters
 mcmc_neff(neff_ratio(opilio2)) #Effective sample size: All ratios > 0.1
 
 #Posterior Predictive check to assess predictive performance: mean and skewness 
+y_obs <- opilio.dat$pcr #Observed values
+
 color_scheme_set("red")
 pmean1 <- posterior_stat_plot(y_obs, opilio2) + 
   theme(legend.text = element_text(size=8), 
@@ -231,13 +247,28 @@ pskew1 <- posterior_stat_plot(y_obs,opilio2, statistic = "skew") +
 
 pmean1 + pskew1 
 
+#PPC: Classify posterior probabilities and compare to observed 
+preds <- posterior_epred(opilio2)
+pred <- colMeans(preds) #averaging across draws 
+pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
+mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy fairly good 
+
+# Compute AUC for predicting prevalence with the model
+preds <- posterior_epred(opilio2) #posterior draws
+auc <- apply(preds, 1, function(x) {
+  roc <- roc(y_obs, x, quiet = TRUE)
+  auc(roc)
+})
+hist(auc) #Model discriminates fairly well 
+
 # model comparison
-loo(opilio1, opilio2) # opilio1 better, no support for adding depth
+loo(opilio1, opilio2) #Opilio2 much better 
 
 ###############################################################################################
-#Model 3: Base Model + Sex
+#Model 3: Add CPUE (fourth-root transformed) to base model 2
+  #Not testing an opilio model with temperature b/c highly correlated with julian day
 
-opilio3_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex + (1 | year/index/station))                      
+opilio3_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index))                      
 
 opilio3 <- brm(opilio3_formula,
                data = opilio.dat,
@@ -258,11 +289,11 @@ summary(opilio3)
 bayes_R2(opilio3)
 
 #Diagnostic Plots
-plot(opilio3)
+plot(opilio3, ask = FALSE)
 plot(conditional_smooths(opilio3), ask = FALSE)
 mcmc_plot(opilio3, type = "areas", prob = 0.95)
 mcmc_rhat(rhat(opilio3)) #Potential scale reduction: All rhats < 1.1
-mcmc_acf(opilio3, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_acf(opilio3, pars = c("b_Intercept", "bs_ssize_1", "bs_sfourth.root.cpue70_1"), lags = 10) #Autocorrelation of selected parameters
 mcmc_neff(neff_ratio(opilio3)) #Effective sample size: All ratios > 0.1
 
 #Posterior Predictive check to assess predictive performance: mean and skewness 
@@ -280,14 +311,27 @@ pskew1 <- posterior_stat_plot(y_obs,opilio3, statistic = "skew") +
 
 pmean1 + pskew1  
 
+#PPC: Classify posterior probabilities and compare to observed 
+preds <- posterior_epred(opilio3)
+pred <- colMeans(preds) #averaging across draws 
+pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
+mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy fairly good 
+
+# Compute AUC for predicting prevalence with the model
+preds <- posterior_epred(opilio3) #posterior draws
+auc <- apply(preds, 1, function(x) {
+  roc <- roc(y_obs, x, quiet = TRUE)
+  auc(roc)
+})
+hist(auc) #Model discriminates fairly well 
+
 # model comparison
-loo(opilio1, opilio2, opilio3) #Sex marginally improves model 
+loo(opilio2, opilio3) #CPUE improves predictive capacity 
 
 ######################################################
-# Model 4: Base model + Sex + Year
+# Model 4: Add sex to model 3
 
-opilio4_formula <-  bf(pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex +
-                       year + (1 | year/index/station))                      
+opilio4_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.cpue70, k = 4) + sex + (1 | year/index))                      
 
 opilio4 <- brm(opilio4_formula,
                data = opilio.dat,
@@ -308,11 +352,11 @@ summary(opilio4)
 bayes_R2(opilio4)
 
 #Diagnostic Plots
-plot(opilio4)
+plot(opilio4, ask = FALSE)
 plot(conditional_smooths(opilio4), ask = FALSE)
 mcmc_plot(opilio4, type = "areas", prob = 0.95)
 mcmc_rhat(rhat(opilio4)) #Potential scale reduction: All rhats < 1.1
-mcmc_acf(opilio4, pars = c("b_Intercept", "bs_ssize_1", "bs_spc1_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_acf(opilio4, pars = c("b_Intercept", "bs_ssize_1", "b_sex2"), lags = 10) #Autocorrelation of selected parameters
 mcmc_neff(neff_ratio(opilio4)) #Effective sample size: All ratios > 0.1
 
 #Posterior Predictive check to assess predictive performance: mean and skewness 
@@ -330,34 +374,46 @@ pskew1 <- posterior_stat_plot(y_obs,opilio4, statistic = "skew") +
 
 pmean1 + pskew1  
 
+#PPC: Classify posterior probabilities and compare to observed 
+preds <- posterior_epred(opilio4)
+pred <- colMeans(preds) #averaging across draws 
+pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
+mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy fairly good 
+
+# Compute AUC for predicting prevalence with the model
+preds <- posterior_epred(opilio4) #posterior draws
+auc <- apply(preds, 1, function(x) {
+  roc <- roc(y_obs, x, quiet = TRUE)
+  auc(roc)
+})
+hist(auc) #Model discriminates fairly well
+
 #Model comparison
-loo(opilio1, opilio2, opilio3, opilio4) #Including sex and year improves predictive performance  
+loo(opilio3, opilio4)  #Opilio4 marginally better  
 
 ############################################
 #Full Model Comparison
 
 #LOO-CV
-model.comp <- loo(opilio1, opilio2, opilio3, opilio4, moment_match=TRUE)
+model.comp <- loo(opilio2, opilio3, opilio4, moment_match=TRUE)
 model.comp
 
 #Table of Rsq Values 
-rbind(bayes_R2(opilio1), 
-      bayes_R2(opilio2), 
+rbind(bayes_R2(opilio2), 
       bayes_R2(opilio3), 
       bayes_R2(opilio4)) %>%
   as_tibble() %>%
-  mutate(model = c("opilio1", "opilio2", "opilio3", "opilio4"),
+  mutate(model = c("opilio2", "opilio3", "opilio4"),
          r_square_posterior_mean = round(Estimate, digits = 2)) %>%
   select(model, r_square_posterior_mean) 
 
 #Model weights 
 #PSIS-LOO
-loo1 <- loo(opilio1)
 loo2 <- loo(opilio2)
 loo3 <- loo(opilio3)
 loo4 <- loo(opilio4)
 
-loo_list <- list(loo1, loo2, loo3, loo4)
+loo_list <- list(loo2, loo3, loo4)
 
 #Compute and compare Pseudo-BMA weights without Bayesian bootstrap, 
 #Pseudo-BMA+ weights with Bayesian bootstrap, and Bayesian stacking weights
@@ -368,12 +424,11 @@ round(cbind(stacking_wts, pbma_wts, pbma_BB_wts),2)
 #Opilio4 has highest weight across all 3 methods 
 
 #Save model output - need to update, model.comp loo keeps crashing  
-tab_model(opilio1, opilio2, opilio3, opilio4)
+tab_model(opilio2, opilio3, opilio4)
 
 forms <- data.frame(formula=c(as.character(opilio4_formula)[1],
-                              as.character(opilio1_formula)[1],
-                              as.character(opilio2_formula)[1],
-                              as.character(opilio3_formula)[1]))
+                              as.character(opilio3_formula)[1],
+                              as.character(opilio2_formula)[1]))
 
 comp.out <- cbind(forms, model.comp$diffs[,1:2])
 write.csv(comp.out, "./output/tanner_model_comp.csv")
@@ -386,45 +441,61 @@ opiliofinal <- brm(opilio4_formula,
                    family = bernoulli(link = "logit"),
                    cores = 4, chains = 4, iter = 10000,
                    save_pars = save_pars(all = TRUE), seed = 1, 
-                   control = list(adapt_delta = 0.999, max_treedepth = 14))
+                   control = list(adapt_delta = 0.9999, max_treedepth = 14))
 
 #Save model output 
 saveRDS(opiliofinal, file = "./output/opiliofinal.rds")
 opiliofinal <- readRDS("./output/opiliofinal.rds")
 
-#Model convergence diagnostics
-check_hmc_diagnostics(opiliofinal$fit) #one divergent transition
+#MCMC convergence diagnostics 
+check_hmc_diagnostics(opiliofinal$fit)
 neff_lowest(opiliofinal$fit)
 rhat_highest(opiliofinal$fit)
+summary(opiliofinal)
+bayes_R2(opiliofinal)
 
-#Trace Plot(plus rug plot of divergences)
-np_ncp <- nuts_params(opiliofinal) #extract diagnostic quantities 
-color_scheme_set("mix-brightblue-gray")
-mcmc_trace(opiliofinal, pars="b_sex2", np = np_ncp) + #Let's look at sex parameter 
-  xlab("Post-warmup iteration")
+#Diagnostic Plots
+plot(opiliofinal, ask = FALSE)
+plot(conditional_smooths(opiliofinal), ask = FALSE)
+mcmc_plot(opiliofinal, type = "areas", prob = 0.95)
+mcmc_rhat(rhat(opiliofinal)) #Potential scale reduction: All rhats < 1.1
+mcmc_neff(neff_ratio(opiliofinal)) #Effective sample size: All ratios > 0.1
 
-#Re-run with increased adapt_delta or is # of iterations in opilio4 enough? 
-#For now, proceeding with predicted effects plots using opilio4
+#Posterior Predictive Check: Mean and skewness summary statistics 
+y_obs <- opilio.dat$pcr #observed values
+
+color_scheme_set("red")
+pmean1 <- posterior_stat_plot(y_obs, opiliofinal) + 
+  theme(legend.text = element_text(size=8), 
+        legend.title = element_text(size=8)) +
+  labs(x="Mean", title="Mean")
+
+color_scheme_set("gray")
+pskew1 <- posterior_stat_plot(y_obs,opiliofinal, statistic = "skew") +
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size=8)) +
+  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
+
+pmean1 + pskew1
+
+#PPC: Classify posterior probabilities and compare to observed 
+preds <- posterior_epred(opiliofinal)
+pred <- colMeans(preds) #averaging across draws 
+pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
+mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy looks good 
+
+# Compute AUC for predicting prevalence with the model
+preds <- posterior_epred(opiliofinal) #posterior draws
+auc <- apply(preds, 1, function(x) {
+  roc <- roc(y_obs, x, quiet = TRUE)
+  auc(roc)
+})
+hist(auc) #Model discriminates fairly well 
 
 ###########################
-# Plot predicted effects from opilio4....update with tidybayes?
-  #Credible intervals are massive for all predictions
-#Year
-ce1s_1 <- conditional_effects(opilio4, effect = "year", re_formula = NA,
-                              probs = c(0.025, 0.975))  
+# Plot predicted effects from final model....update with tidybayes?
 
-plot <- ce1s_1$year %>%
-  dplyr::select(year, estimate__, lower__, upper__)
-
-ggplot(plot, aes(year, estimate__)) +
-  geom_point(size=3) +
-  geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
-  ylab("Probability positive") +
-  ggtitle("Opilio Final - posterior mean & 95% credible interval")
-
-ggsave("./figs/opiliofinal_year_effect.png", width = 2, height = 3, units = 'in')
-
-# then sex
+#Sex
 ce1s_1 <- conditional_effects(opilio4, effect = "sex", re_formula = NA,
                               probs = c(0.025, 0.975))  
 
@@ -439,8 +510,7 @@ ggplot(plot, aes(sex, estimate__)) +
 
 ggsave("./figs/opiliofinal_sex_effect.png", width = 2, height = 3, units = 'in')
 
-# then size
-
+#Size
 ## 95% CI
 ce1s_1 <- conditional_effects(opilio4, effect = "size", re_formula = NA,
                               probs = c(0.025, 0.975))
@@ -468,6 +538,64 @@ ggplot(dat_ce) +
   ggtitle("opilio Final - posterior mean & 80 / 90 / 95% credible intervals")
 
 ggsave("./figs/opiliofinal_size_effect.png", width = 6, height = 4, units = 'in')
+
+#Julian Day
+## 95% CI
+ce1s_1 <- conditional_effects(opilio4, effect = "julian", re_formula = NA,
+                              probs = c(0.025, 0.975))
+## 90% CI
+ce1s_2 <- conditional_effects(opilio4, effect = "julian", re_formula = NA,
+                              probs = c(0.05, 0.95))
+## 80% CI
+ce1s_3 <- conditional_effects(opilio4, effect = "julian", re_formula = NA,
+                              probs = c(0.1, 0.9))
+dat_ce <- ce1s_1$julian
+dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
+dat_ce[["lower_95"]] <- dat_ce[["lower__"]]
+dat_ce[["upper_90"]] <- ce1s_2$julian[["upper__"]]
+dat_ce[["lower_90"]] <- ce1s_2$julian[["lower__"]]
+dat_ce[["upper_80"]] <- ce1s_3$julian[["upper__"]]
+dat_ce[["lower_80"]] <- ce1s_3$julian[["lower__"]]
+
+ggplot(dat_ce) +
+  aes(x = effect1__, y = estimate__) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
+  geom_line(size = 1, color = "red3") +
+  labs(x = "Julian Day", y = "Probability positive") +
+  ggtitle("opilio Final - posterior mean & 80 / 90 / 95% credible intervals")
+
+ggsave("./figs/opiliofinal_julian_effect.png", width = 6, height = 4, units = 'in')
+
+#CPUE
+## 95% CI
+ce1s_1 <- conditional_effects(opilio4, effect = "fourth.root.cpue70", re_formula = NA,
+                              probs = c(0.025, 0.975))
+## 90% CI
+ce1s_2 <- conditional_effects(opilio4, effect = "fourth.root.cpue70", re_formula = NA,
+                              probs = c(0.05, 0.95))
+## 80% CI
+ce1s_3 <- conditional_effects(opilio4, effect = "fourth.root.cpue70", re_formula = NA,
+                              probs = c(0.1, 0.9))
+dat_ce <- ce1s_1$fourth.root.cpue70
+dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
+dat_ce[["lower_95"]] <- dat_ce[["lower__"]]
+dat_ce[["upper_90"]] <- ce1s_2$fourth.root.cpue70[["upper__"]]
+dat_ce[["lower_90"]] <- ce1s_2$fourth.root.cpue70[["lower__"]]
+dat_ce[["upper_80"]] <- ce1s_3$fourth.root.cpue70[["upper__"]]
+dat_ce[["lower_80"]] <- ce1s_3$fourth.root.cpue70[["lower__"]]
+
+ggplot(dat_ce) +
+  aes(x = effect1__, y = estimate__) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
+  geom_line(size = 1, color = "red3") +
+  labs(x = "Immature CPUE (num/nmi2)", y = "Probability positive") +
+  ggtitle("opilio Final - posterior mean & 80 / 90 / 95% credible intervals")
+
+ggsave("./figs/opiliofinal_cpue_effect.png", width = 6, height = 4, units = 'in')
 
 ###################################
 ## predict overall prevalence....need to follow up on this 

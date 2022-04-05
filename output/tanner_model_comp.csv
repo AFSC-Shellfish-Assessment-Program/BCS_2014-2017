@@ -1,7 +1,5 @@
 "","formula","elpd_diff","se_diff"
-"tanner5","pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | year/index/station)",0,0
-"tanner3","pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index/station)",-0.47245958762518,0.510697614234833
-"tanner1","pcr ~ s(size, k = 4) + s(pc1, k = 4) + (1 | year/index/station)",-0.485208741308824,0.306751524230078
-"tanner2","pcr ~ s(size, k = 4) + s(pc1, k = 4) + s(temperature, k = 4) + (1 | year/index/station)",-0.733515579694007,0.281930949450232
-"tanner4","pcr ~ s(size, k = 4) + s(pc1, k = 4) + sex + (1 | year/index/station)",-0.88225776707438,0.38488362635937
-"tanner6","pcr ~ s(size, k = 4) + s(pc1, k = 4) + year + (1 | index/station)",-18.4801083311991,6.3357584193436
+"tanner3","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + (1 | year/index)",0,0
+"tanner4","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index)",-0.424374568761415,1.43317136558898
+"tanner5","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + sex + (1 | year/index)",-0.783669912879583,0.506926810053962
+"tanner2","pcr ~ s(size, k = 4) + s(julian, k = 4) + (1 | year/index)",-1.07376627729194,1.61880478978407
