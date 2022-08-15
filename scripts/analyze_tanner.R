@@ -1,6 +1,6 @@
 # notes ----
 #Analyze BCS infection dynamics in C. bairdi using Bayesian multivariate models
-#Investigate factors that may be important in driving disease prevalence 
+#Investigate factors that may be important in driving disease occurrence 
   #(host size/sex, depth, temperature, lat/long, immature crab density, date of sampling)
 
 #load

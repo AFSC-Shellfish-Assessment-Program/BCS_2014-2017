@@ -150,7 +150,7 @@ pc1 <- pca.dat %>%
 opilio.dat <- left_join(opilio.dat, pc1)
 
 ####################################################
-#Approach 1: use GLM's to assess whether prevalence varies as a function of size/pc1/year/depth/cpue 
+#Approach 1: use GLM's to assess whether occurance varies as a function of size/pc1/year/depth/cpue 
 #No random effects here- not accounting for variation across index sites/nested design
 
 #Full model with size/pc1/year/depth/cpue

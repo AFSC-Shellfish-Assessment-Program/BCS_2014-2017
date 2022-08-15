@@ -1,6 +1,6 @@
 # notes ----
 #Analyze BCS infection dynamics in C.opilio using Bayesian multivariate models 
-#Investigate factors that may be important in driving disease prevalence 
+#Investigate factors that may be important in driving disease occurance 
   #(i.e. host size/sex, depth, temperature, lat/long, immature crab density, date of sampling)
 
 #load
@@ -598,7 +598,7 @@ ggplot(dat_ce) +
 ggsave("./figs/opiliofinal_cpue_effect.png", width = 6, height = 4, units = 'in')
 
 ###################################
-## predict overall prevalence....need to follow up on this 
+## predict overall occurance....need to follow up on this 
 
 # first, create a combined year_index_station column to identify combinations that exist in the data
 opilio.dat$yr_ind_st <- paste(opilio.dat$year, opilio.dat$index, opilio.dat$station, sep = "_")

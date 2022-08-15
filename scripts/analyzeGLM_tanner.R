@@ -132,7 +132,7 @@ pca.dat %>%
 tanner.dat <- left_join(tanner.dat, pc1)
 
 ####################################################
-#Approach 1: use GLM's to assess whether prevalence varies as a function of size/pc1/year/site/cpue 
+#Approach 1: use GLM's to assess whether occurrence varies as a function of size/pc1/year/site/cpue 
   #No random effects here- not accounting for variation across index sites/nested design
 
 #Full model for spatiotemporal effects: across year and across season (depth/day/long)

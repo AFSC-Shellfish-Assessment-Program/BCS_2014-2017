@@ -2,7 +2,7 @@
 #Data exploration: BCS infection dynamics in C. opilio 
 
 # Author: Mike Litzow & Erin Fedewa
-# last updated: 2022/1/31
+# last updated: 2022/9/7
 
 # load ----
 library(tidyverse)
@@ -86,6 +86,23 @@ opilio.dat %>%
             depth = mean(depth),
             julian = mean(julian)) -> plot 
 
+# BCS+/- by index/year
+opilio.dat %>%
+  select(year, index, pcr) %>%
+  group_by(year, index) %>%
+  summarise(PCR_0 = sum(pcr == 0),
+            PCR_1 = sum(pcr == 1)) %>%
+  pivot_longer(cols = c(-year, -index)) -> plot2
+
+#% +/- stacked barplot
+ggplot(plot2, aes(fill=name, y=value, x=year)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(~ index)
+ggsave("./figs/opilio_index_year_incidence.png", width = 6, height = 6, units = "in")
+
+#############################################
+#Covariate data exploration 
+
 #Temperature
 ggplot(plot, aes(temperature)) +
   geom_histogram(bins = 12, fill = "dark grey", color = "black") +
@@ -108,20 +125,6 @@ ggsave("./figs/opilio_date_by_index.png", width = 5, height = 4, units = "in")
 ggplot(plot, aes(julian, temperature)) +
   geom_point() # Stronger correlation than tanner temp vrs date 
 ggsave("./figs/opilio_date_vs_bottom_temp.png", width = 6, height = 4, units = "in")
-
-# BCS+/- by index/year
-opilio.dat %>%
-  select(year, index, pcr) %>%
-  group_by(year, index) %>%
-  summarise(PCR_0 = sum(pcr == 0),
-            PCR_1 = sum(pcr == 1)) %>%
-  pivot_longer(cols = c(-year, -index)) -> plot2
-
-#% +/- stacked barplot
-ggplot(plot2, aes(fill=name, y=value, x=year)) +
-  geom_bar(position="fill", stat="identity") +
-  facet_grid(~ index)
-ggsave("./figs/opilio_index_year_incidence.png", width = 6, height = 6, units = "in")
 
 
 #Plot explanatory variables as predictors of proportion BCS+ by year/station 
