@@ -6,19 +6,10 @@
 
 # load ----
 library(tidyverse)
-library(rstan)
-library(brms)
-library(bayesplot)
-source("./scripts/stan_utils.R")
+library(lubridate)
 
-# load PCR data 
+#load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
-
-# set plot theme
-theme_set(theme_bw())
-
-# colorblind palette
-cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
 
 #####################################################
 # data wrangling
@@ -47,23 +38,27 @@ dat %>%
 ggplot(opilio.dat, aes(snow70under_cpue)) +
   geom_histogram(bins = 30, fill = "grey", color = "black")
 
+  #4th root
 ggplot(opilio.dat, aes(snow70under_cpue^0.25)) +
   geom_histogram(bins = 30, fill = "grey", color = "black")
 
+  #log
 ggplot(opilio.dat, aes(log(snow70under_cpue))) +
   geom_histogram(bins = 30, fill = "grey", color = "black")
 
-#examine protocol target size opilio cpue distribution
+#examine protocol target size opilio cpue distribution to decide on transf.
 ggplot(opilio.dat, aes(snowimm_cpue)) +
   geom_histogram(bins = 30, fill = "grey", color = "black")
 
+  #4th root
 ggplot(opilio.dat, aes(snowimm_cpue^0.25)) +
   geom_histogram(bins = 30, fill = "grey", color = "black")
 
+  #log
 ggplot(opilio.dat, aes(log(snowimm_cpue))) +
   geom_histogram(bins = 30, fill = "grey", color = "black")
 
-#Transform CPUE
+#Transform both CPUE indices with 4th root
 opilio.dat %>%
   mutate(fourth.root.cpue70 = snow70under_cpue^0.25,
          fouth.root.cpueimm = snowimm_cpue^0.25) -> opilio.dat 
@@ -71,20 +66,13 @@ opilio.dat %>%
 ###############################################
 #Data exploration
 
-nrow(opilio.dat) # 1511 samples!
+nrow(opilio.dat) # 1520 samples!
 
 #Sample sizes
 opilio.dat %>%
   group_by(year, index, station) %>%
   count() %>%
   print(n=100) #Only one crab sampled at  some stations..though better than tanner
-
-#Plot range of observed data by year/index site 
-opilio.dat %>%
-  group_by(year, index, station) %>%
-  summarise(temperature = mean(temperature),
-            depth = mean(depth),
-            julian = mean(julian)) -> plot 
 
 # BCS+/- by index/year
 opilio.dat %>%
@@ -96,36 +84,51 @@ opilio.dat %>%
 
 #% +/- stacked barplot
 ggplot(plot2, aes(fill=name, y=value, x=year)) +
-  geom_bar(position="fill", stat="identity") +
+  geom_bar(position="stack", stat="identity") +
   facet_grid(~ index)
-ggsave("./figs/opilio_index_year_incidence.png", width = 6, height = 6, units = "in")
+
+#Size composition sampled by index site/yr
+opilio.dat %>%
+  group_by(year, index) %>%
+  ggplot() +
+  geom_density(aes(x=size), position = "stack") +
+  facet_grid(year~index)
+
+#This is something to keep in mind when interpreting changes in prev. across
+#site and year- at site 6 prevalence was very low, but is likely due to 
+#most samples being taken from mature males (despite protocol specifying imm).
+#Without pulling them, it's difficult to interpret changes in prevalence as 
+#a true measure of the disease prev, vrs. just a factor of the subset of population 
+#being sampled. 
 
 #############################################
 #Covariate data exploration 
+
+#Plot range of observed data by year/index site 
+opilio.dat %>%
+  group_by(year, index, station) %>%
+  summarise(temperature = mean(temperature),
+            depth = mean(depth),
+            julian = mean(julian)) -> plot 
 
 #Temperature
 ggplot(plot, aes(temperature)) +
   geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(year ~ index)
-ggsave("./figs/opilio_bottom_temp_by_index.png", width = 5, height = 4, units = "in")
 
 #Depth
 ggplot(plot, aes(depth)) +
   geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(year ~ index)
-ggsave("./figs/opilio_depth_by_index.png", width = 5, height = 4, units = "in")
 
 #Julian Day 
 ggplot(plot, aes(julian)) +
   geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(year ~ index) # big differences among index areas
-ggsave("./figs/opilio_date_by_index.png", width = 5, height = 4, units = "in")
 
 #Julian date vrs temperature 
 ggplot(plot, aes(julian, temperature)) +
   geom_point() # Stronger correlation than tanner temp vrs date 
-ggsave("./figs/opilio_date_vs_bottom_temp.png", width = 6, height = 4, units = "in")
-
 
 #Plot explanatory variables as predictors of proportion BCS+ by year/station 
 opilio.dat %>%
@@ -141,22 +144,19 @@ opilio.dat %>%
 ggplot(plot3, aes(julian, proportion.positive)) +
   geom_point() + 
   facet_wrap(~year) +
-  geom_smooth(method = "gam")
-ggsave("./figs/opilio_date_vs_percent_positive.png", width = 6, height = 4, units = "in")
+  geom_smooth(method = "gam") #Seasonality effect
 
 #Mean size-at-station vrs %positive plot 
 ggplot(plot3, aes(size, proportion.positive)) +
   geom_point() + 
   facet_wrap(~year) +
-  geom_smooth(method = "gam")
-ggsave("./figs/opilio_size_vs_percent_positive.png", width = 6, height = 4, units = "in")
+  geom_smooth(method = "gam") #size effect
 
 #Temp-at-station vrs %positive plot 
 ggplot(plot3, aes(temperature, proportion.positive)) +
   geom_point() + 
   facet_wrap(~year) +
-  geom_smooth(method = "gam")
-ggsave("./figs/opilio_temp_vs_percent_positive.png", width = 6, height = 4, units = "in")
+  geom_smooth(method = "gam") #temperature effect
 
 # <70mm CPUE-at-station vrs %positive plot 
 ggplot(plot3, aes(CPUE70, proportion.positive)) +

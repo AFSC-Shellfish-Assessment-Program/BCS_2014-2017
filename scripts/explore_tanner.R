@@ -11,12 +11,6 @@ library(lubridate)
 #load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
 
-# set plot theme
-theme_set(theme_bw())
-
-# colorblind palette
-cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
-
 ###########################################################
 # data wrangling
 dat %>%
@@ -76,14 +70,8 @@ nrow(tanner.dat) # 1285 samples!
 tanner.dat %>%
   group_by(year, index, station) %>%
   count() %>%
-  print(n=100) #Only one crab sampled at  some stations
-
-#Plot range of observed data by year/index site 
-tanner.dat %>%
-  group_by(year, index, station) %>%
-  summarise(temperature = mean(temperature),
-            depth = mean(depth),
-            julian = mean(julian)) -> plot 
+  print(n=100) #Only one crab sampled at  some stations so attributing
+#variance to station level will be difficult 
 
 # BCS+/- occurrence by index/year
 tanner.dat %>%
@@ -95,37 +83,51 @@ tanner.dat %>%
 
 #% +/- stacked barplot
 ggplot(plot2, aes(fill=name, y=value, x=year)) +
-  geom_bar(position="fill", stat="identity") +
+  geom_bar(position="stack", stat="identity") +
   facet_grid(~ index)
-ggsave("./figs/tanner_index_year_incidence.png", width = 6, height = 6, units = "in")
 
+#Size composition sampled by index site/yr
+tanner.dat %>%
+  group_by(year, index) %>%
+  ggplot() +
+    geom_density(aes(x=size), position = "stack") +
+  facet_grid(year~index)
+
+#This is something to keep in mind when interpreting changes in prev. across
+#site and year- in 2016 and 2017 prevalence was very low, but is likely due to 
+#most samples being taken from mature males (despite protocol specifying imm).
+#Without pulling them, it's difficult to interpret changes in prevalence as 
+#a true measure of the disease prev, vrs. just a factor of the subset of population 
+#being sampled. 
 
 ###########################################
 #Covariate data exploration
+
+#Plot range of observed data by year/index site 
+tanner.dat %>%
+  group_by(year, index, station) %>%
+  summarise(temperature = mean(temperature),
+            depth = mean(depth),
+            julian = mean(julian)) -> plot 
 
 #Temperature
 ggplot(plot, aes(temperature)) +
   geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(year ~ index)
-ggsave("./figs/tanner_bottom_temp_by_index.png", width = 5, height = 4, units = "in")
 
 #Depth
 ggplot(plot, aes(depth)) +
   geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(year ~ index)
-ggsave("./figs/tanner_depth_by_index.png", width = 5, height = 4, units = "in")
 
 #Julian Day 
 ggplot(plot, aes(julian)) +
   geom_histogram(bins = 12, fill = "dark grey", color = "black") +
-  facet_grid(year ~ index) # big differences among index areas
-ggsave("./figs/tanner_date_by_index.png", width = 5, height = 4, units = "in")
+  facet_grid(year ~ index) #differences among index areas
 
 #Julian date vrs temperature 
 ggplot(plot, aes(julian, temperature)) +
-  geom_point() # julian day is no longer collinear with temperature once 2017 is included
-ggsave("./figs/tanner_date_vs_bottom_temp.png", width = 6, height = 4, units = "in")
-
+  geom_point() 
 
 #Plot explanatory variables as predictors of proportion BCS+ by year/station 
 tanner.dat %>%
@@ -141,15 +143,13 @@ tanner.dat %>%
 ggplot(plot3, aes(julian, proportion.positive)) +
   geom_point() + 
   facet_wrap(~year) +
-  geom_smooth(method = "gam")
-ggsave("./figs/tanner_date_vs_percent_positive.png", width = 6, height = 4, units = "in")
+  geom_smooth(method = "gam") #Large seasonal effect!
 
 #Mean size-at-station vrs %positive plot 
 ggplot(plot3, aes(size, proportion.positive)) +
   geom_point() + 
   facet_wrap(~year) +
-  geom_smooth(method = "gam")
-ggsave("./figs/tanner_size_vs_percent_positive.png", width = 6, height = 4, units = "in")
+  geom_smooth(method = "gam") #Large size effect!
 
 #Temp-at-station vrs %positive plot 
 ggplot(plot3, aes(temperature, proportion.positive)) +
@@ -167,7 +167,8 @@ ggplot(plot3, aes(CPUE70, proportion.positive)) +
 ggplot(plot3, aes(CPUEimm, proportion.positive)) +
   geom_point() + 
   facet_wrap(~year) +
-  geom_smooth(method = "gam") #Very similar to above plot 
+  geom_smooth(method = "gam") 
+#Very similar to above plot- CPUE metrics likely very similar 
 
 
 
