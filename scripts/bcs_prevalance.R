@@ -33,6 +33,11 @@ dat %>%
          station = as.factor(station),
          depth = as.numeric(depth)) -> dat2
 
+#Calculate prevalence by year
+dat2 %>%
+  group_by(species_name, year) %>%
+  summarise(Prevalance = (sum(pcr)/n())*100) 
+
 #Calculate prevalence and sample sizes within index sites
 dat2 %>%
   group_by(species_name, index, year) %>%
@@ -73,7 +78,12 @@ ggsave("./figs/opilio_tanner_prev.png")
 #See explore_ scripts: these trends are hard to interpret as true disease
 #prevalence b/c same portion of the population was not sampled across years/sites 
 
-
+#Size range of crab sampled by species
+dat2 %>%
+  group_by(species_name, year) %>%
+  summarise(Min_size = min(size, na.rm=T),
+            Max_size = max(size, na.rm=T),
+            Avg_size = mean(size, na.rm=T))
 
 
 
@@ -81,7 +91,6 @@ ggsave("./figs/opilio_tanner_prev.png")
  
   
   
- 
 
 
 
