@@ -106,8 +106,8 @@ opilio.dat %>%
   group_by(size_bin) %>%
   summarise(Prevalance = (sum(pcr)/n())*100) %>%
   filter(size_bin != "NA") -> size
-  ggplot(size, aes(size_bin, Prevalance)) +
-  geom_point() 
+  ggplot(size, aes(as.factor(size_bin), Prevalance)) +
+  geom_col() 
   
 #This is something to keep in mind when interpreting changes in prev. across
 #site and year- at site 6 prevalence was very low, but is likely due to 
