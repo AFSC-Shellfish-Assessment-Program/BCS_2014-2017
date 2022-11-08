@@ -91,9 +91,24 @@ ggplot(plot2, aes(fill=name, y=value, x=year)) +
 opilio.dat %>%
   group_by(year, index) %>%
   ggplot() +
-  geom_density(aes(x=size), position = "stack") +
+  geom_histogram(aes(x=size), position = "stack") +
   facet_grid(year~index)
 
+#Size-frequency distribution of uninfected vrs infected
+opilio.dat %>%
+  ggplot(aes(size, fill=as.factor(pcr), color=as.factor(pcr))) +  
+  geom_histogram(position="identity",alpha=0.5) +
+  theme_bw()
+
+#Percent prevalence by size bin
+opilio.dat %>% 
+  mutate(size_bin = cut(size, breaks=c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120))) %>%
+  group_by(size_bin) %>%
+  summarise(Prevalance = (sum(pcr)/n())*100) %>%
+  filter(size_bin != "NA") -> size
+  ggplot(size, aes(size_bin, Prevalance)) +
+  geom_point() 
+  
 #This is something to keep in mind when interpreting changes in prev. across
 #site and year- at site 6 prevalence was very low, but is likely due to 
 #most samples being taken from mature males (despite protocol specifying imm).
@@ -169,8 +184,6 @@ ggplot(plot3, aes(CPUEimm, proportion.positive)) +
   geom_point() + 
   facet_wrap(~year) +
   geom_smooth(method = "gam") #Very similar to above plot 
-
-
 
 
                               

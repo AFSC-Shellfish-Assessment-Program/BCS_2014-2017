@@ -90,8 +90,35 @@ ggplot(plot2, aes(fill=name, y=value, x=year)) +
 tanner.dat %>%
   group_by(year, index) %>%
   ggplot() +
-    geom_density(aes(x=size), position = "stack") +
+    geom_histogram(aes(x=size), position = "stack") +
   facet_grid(year~index)
+
+#Size-frequency distribution of uninfected vrs infected
+tanner.dat %>%
+  ggplot(aes(size, fill=as.factor(pcr), color=as.factor(pcr))) +  
+  geom_histogram(position="identity",alpha=0.5) +
+  theme_bw()
+
+#Size-frequency distribution of maturity status- only those w/ chela measurements! 
+dat %>%
+  filter(species_name == "Chionoecetes bairdi",
+         index_site %in% c(1, 2, 3),
+         year %in% c(2015:2017),
+         sex %in% c(1, 2),
+         maturity %in% c(0,1),
+         pcr_result %in% c(1, 0)) %>%
+  ggplot(aes(size, fill=as.factor(maturity), color=as.factor(maturity))) +  
+  geom_histogram(position="identity",alpha=0.5) +
+  theme_bw()
+
+#Percent prevalence by size bin
+tanner.dat %>% 
+  mutate(size_bin = cut(size, breaks=c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140))) %>%
+  group_by(size_bin) %>%
+  summarise(Prevalance = (sum(pcr)/n())*100) %>%
+  filter(size_bin != "NA") -> size
+ggplot(size, aes(size_bin, Prevalance)) +
+  geom_point() 
 
 #This is something to keep in mind when interpreting changes in prev. across
 #site and year- in 2016 and 2017 prevalence was very low, but is likely due to 
