@@ -605,6 +605,7 @@ rhat_highest(tannerfinal$fit)
 summary(tannerfinal)
 bayes_R2(tannerfinal)
 
+
 #Diagnostic Plots
 plot(tannerfinal, ask = FALSE)
 plot(conditional_smooths(tannerfinal), ask = FALSE)
@@ -612,6 +613,9 @@ mcmc_plot(tannerfinal, type = "areas", prob = 0.95)
 mcmc_rhat(rhat(tannerfinal)) #Potential scale reduction: All rhats < 1.1
 mcmc_acf(tannerfinal, pars = c("b_Intercept", "bs_ssize_1", "bs_stemperature_1"), lags = 10) #Autocorrelation of selected parameters
 mcmc_neff(neff_ratio(tannerfinal)) #Effective sample size: All ratios > 0.1
+marginal_effects(tannerfinal, surface = TRUE) #visualize effects of predictors on the expected response
+marginal_smooths(tannerfinal) #
+hypothesis(tannerfinal, "sjulian_1 < 0")
 
 #Posterior Predictive Check: Mean and skewness summary statistics 
 color_scheme_set("red")
@@ -642,6 +646,10 @@ auc <- apply(preds, 1, function(x) {
   auc(roc)
 })
 hist(auc) #Looks like our model discriminates fairly well 
+
+# extract posterior draws in an array format
+draws_fit <- as_draws_array(tannerfinal)
+posterior::summarize_draws(draws_fit)
 
 #Get posterior estimates with tidybayes 
 get_variables(tannerfinal)

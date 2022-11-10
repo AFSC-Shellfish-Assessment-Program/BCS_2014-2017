@@ -2,7 +2,7 @@
 #Sensitivity and specificity analysis between PCR and visual diagnosis
 
 # Author: Erin Fedewa
-# last updated: 2022/9/11
+# last updated: 2022/10/31
 
 #Follow ups: add CI's for sensitivity and specificity 
 
@@ -29,17 +29,8 @@ dat %>%
   mutate(sens = TP_n/(TP_n+FN_n), #Sensitivity of visual diagnosis
          spec = TN_n/(FP_n+TN_n)) #Specificity of visual diagnosis
 
-#Wow...7% probability of diagnosing visually + when hematodinium is present 
+#7% probability of diagnosing visually + when PCR is +
   #99% probability of diagnosing visually neg when hemato is absent 
-
-#Calculate sample size and binomial CI's
-a <- .05 #significance level
-dat2 %>%
-  group_by(species_name, index, year) %>%
-  summarise(n = n()) %>%
-  full_join(prev) %>%
-  mutate(CI_upper = Prevalance + (qnorm(1-a/2))*sqrt((1/n)*Prevalance*(100-Prevalance)),
-         CI_lower = Prevalance + (-qnorm(1-a/2))*sqrt((1/n)*Prevalance*(100-Prevalance))) -> prev_n
 
 ###############################################
 #Does specificity/sensitivity differ by crab size/seasonality? May need to follow up
@@ -122,8 +113,9 @@ Sys.setenv(JAGS_HOME = "C:/Users/erin.fedewa/AppData/Local/Programs/JAGS/JAGS-4.
  
 #Reference: https://github.com/paoloeusebi/BLCM-Covid19/blob/master/covid_r1_ind_I.R
 #https://academic.oup.com/aje/article/190/8/1689/6206818
+#https://cran.r-project.org/web/packages/runjags/vignettes/quickjags.html
 
-#Model structure for run.jags() is a little over my head....
+#Model structure for run.jags() is a little over my head....side burner for now
 
 #Approach 2: R Shiny App for latent class models
 #https://www.nandinidendukuri.com/how-to-guide-on-a-r-shiny-app-to-do-bayesian-inference-for-diagnostic-meta-analysis/
@@ -132,19 +124,20 @@ dat2 %>%
   summarise(TP_n = nrow(filter(.,sen_spec=="TP")),
             FP_n = nrow(filter(.,sen_spec=="FP")),
             FN_n = nrow(filter(.,sen_spec=="FN")),
-            TN_n = nrow(filter(.,sen_spec=="TN")))
+            TN_n = nrow(filter(.,sen_spec=="TN"))) -> early
 
 dat2 %>%
   filter(julian > 198) %>%
   summarise(TP_n = nrow(filter(.,sen_spec=="TP")),
             FP_n = nrow(filter(.,sen_spec=="FP")),
             FN_n = nrow(filter(.,sen_spec=="FN")),
-            TN_n = nrow(filter(.,sen_spec=="TN")))
+            TN_n = nrow(filter(.,sen_spec=="TN"))) -> late
 
-tp <- c(20,36) 
-fp <- c(1,1) 
-fn <- c(242,477) 
-tn <- c(1316,715) 
+#Set up data structure to feed to R shiny model 
+tp <- c(early$TP_n, late$TP_n) 
+fp <- c(early$FP_n, late$FP_n) 
+fn <- c(early$FN_n, late$FN_n) 
+tn <- c(early$TN_n, late$TN_n) 
 cell <- cbind(tp, fp, fn, tn)
 n <- length(tp)  #  Number of studies      
 write("tp fp fn tn","output/Sens_Data.txt")

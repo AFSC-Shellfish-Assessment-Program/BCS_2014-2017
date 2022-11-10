@@ -2,7 +2,7 @@
 #Data exploration: BCS infection dynamics in C. opilio 
 
 # Author: Mike Litzow & Erin Fedewa
-# last updated: 2022/9/7
+# last updated: 2022/11/7
 
 # load ----
 library(tidyverse)
