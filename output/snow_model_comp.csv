@@ -1,0 +1,5 @@
+"","formula","elpd_diff","se_diff"
+"opilio5","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.cpue70, k = 4) + sex + s(depth, k = 4) + (1 | year/index)",0,0
+"opilio4","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.cpue70, k = 4) + sex + (1 | year/index)",-4.35523966386417,3.22472244892571
+"opilio3","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index)",-9.17991487042979,4.86545097234839
+"opilio2","pcr ~ s(size, k = 4) + s(julian, k = 4) + (1 | year/index)",-13.9371780992834,6.08225433381693

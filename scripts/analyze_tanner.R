@@ -74,7 +74,12 @@ dat %>%
          fourth.root.cpue70 = tanner70under_cpue^0.25, #Transformed CPUE of tanner <70mm CW
          fouth.root.cpueimm = tannerimm_cpue^0.25) -> tanner.dat #Transformed CPUE of immature tanner (Jensen protocol cutline)
 
-#Dimension reduction for highly correlated exogenous covariates 
+#Check for missing data for PCA
+tanner.dat %>%
+  select(size, sex, year, index, station, julian, longitude, depth, temperature) %>%
+  filter(!complete.cases(.)) #Looks good 
+
+#Assess collinearity b/w covariates 
 tanner.dat %>%
   group_by(station, year) %>%
   summarise(julian = mean(julian),
@@ -83,8 +88,8 @@ tanner.dat %>%
                    temperature = mean(temperature),
                    fourth.root.cpue70 = mean(fourth.root.cpue70)) -> pca.dat
 
-cor(pca.dat[,3:7]) 
-corrplot(cor(pca.dat[,3:7])) 
+cor(pca.dat[,3:7]) # depth, longitude and julian day highly correlated
+corrplot(cor(pca.dat[,3:7]), method = 'number') 
 
 #Plot 
 pca.dat %>%
@@ -104,21 +109,12 @@ ggplot(aes(`Day of Year`, value)) +
   theme(axis.title.y = element_blank())
 ggsave("./figs/tanner_julian_temp_depth_long_cpue.png", width = 4.5, height = 7.5, units = 'in')
 
-#Fit a PCA with all exogenous covariates
-PCA <- prcomp(pca.dat[,3:7], scale = T, center = T)
+#Dimension reduction for depth/long/day using PCA
+PCA <- prcomp(pca.dat[,3:5], scale = T, center = T)
 PCA$rotation #Variable loadings
-
-#PCA result plots 
-fviz_eig(PCA) #Scree plot: PC1 explains ~60% of variance 
-fviz_pca_var(PCA, col.var = "contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = TRUE)     
-get_eig(PCA)
-
-#Refit PCA with just long/depth/julian day and extract pc1 only for models 
-PCA2 <- prcomp(pca.dat[,3:5], scale = T, center = T)
-PCA2$rotation #Variable loadings
-fviz_eig(PCA2) #Scree plot
-PCA2$x
-pca.dat$pc1 <- PCA2$x[,1]
+fviz_eig(PCA) #Scree plot, PC1 explains 91%
+fviz_pca_var(PCA, col.var = "contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = TRUE)
+pca.dat$pc1 <- PCA$x[,1]
 
 #Join pc1 back in
 pc1 <- pca.dat %>%
@@ -264,8 +260,15 @@ auc <- apply(preds, 1, function(x) {
 hist(auc) #Model discriminates fairly well 
 
 # model comparison
-loo(tanner1, tanner2, moment_match = TRUE) #Although tanner1 has better predictive capacity, let's move
-  #forward with julian day to capture seasonal progression for ease of interpretation 
+loo(tanner1, tanner2, moment_match = TRUE) 
+
+#Smooths of pc1 vrs Julian
+conditional_smooths(tanner1, effects = "pc1")
+conditional_smooths(tanner2, effects = "julian") #Very similar smooths- depth and long not adding much
+
+#Although tanner1 has better predictive capacity, let's move
+  #forward with julian day to capture seasonal progression for ease of interpretation and consistency 
+  #with snow crab base model structure 
 
 #################################################
 # Model 3: Add temperature to base model 2 
@@ -584,8 +587,7 @@ tibble(idx = seq_along(k_tanner3),
 
 ###########################
 #Below is a preliminary final model using tanner3, though all models tested are very similar
-  #Should we be using predictions from model averaging, or is there enough rationale for tanner3? 
-
+  
 #Final Model:  Run tanner3 model with 10,000 iterations and set seed for reproducibility 
 tannerfinal <- brm(tanner3_formula,
                data = tanner.dat,
@@ -662,7 +664,7 @@ post_beta_means <- tannerfinal %>%
               #Might have to come back to this one 
 
 ################################
-#Plot predicted effects from best model...should be much easier with tidybayes
+#Plot predicted effects from best model
 
 #Size
 ## 95% CI
@@ -688,9 +690,9 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
-  labs(x = "Carapace width (mm)", y = "Probability positive") +
-  ggtitle("Tanner Final - posterior mean & 80 / 90 / 95% credible intervals")
-ggsave("./figs/tannerfinal_size_effect.png", width = 6, height = 4, units = 'in')
+  labs(x = "Carapace width (mm)", y = "Probability of infection") +
+  theme_bw() -> sizeplot
+  
 
 ##Julian Day
 ## 95% CI
@@ -716,9 +718,9 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
-  labs(x = "Julian Day", y = "Probability positive") +
-  ggtitle("Tanner Final - posterior mean & 80 / 90 / 95% credible intervals")
-ggsave("./figs/tannerfinal_julian_effect.png", width = 6, height = 4, units = 'in')
+  labs(x = "Julian Day", y = "") +
+  theme_bw() -> dayplot
+  
 
 ##Temperature 
 ## 95% CI
@@ -744,9 +746,13 @@ ggplot(dat_ce) +
   geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
   geom_line(size = 1, color = "red3") +
-  labs(x = "Temperature (C)", y = "Probability positive") +
-  ggtitle("Tanner Final - posterior mean & 80 / 90 / 95% credible intervals")
-ggsave("./figs/tannerfinal_temp_effect.png", width = 6, height = 4, units = 'in')
+  labs(x = "Temperature (C)", y = "") +
+  theme_bw() -> tempplot
+
+#Combine plots for Fig 4 of MS
+(sizeplot | dayplot | tempplot) 
+ggsave("./figs/tannerFig4.png")
+  
 
 #####################################################
 #Predictions for final model ...need to follow up on this 
