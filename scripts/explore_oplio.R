@@ -91,8 +91,11 @@ ggplot(plot2, aes(fill=name, y=value, x=year)) +
 opilio.dat %>%
   group_by(year, index) %>%
   ggplot() +
-  geom_histogram(aes(x=size), position = "stack") +
-  facet_grid(year~index)
+  geom_histogram(aes(x=size, fill=as.factor(sex), color=as.factor(sex)), position = "stack") +
+  facet_wrap(~year) +
+  theme_bw() +
+  theme(legend.title = element_blank())
+  #facet_grid(year~index)
 
 #Size-frequency distribution of uninfected vrs infected
 opilio.dat %>%

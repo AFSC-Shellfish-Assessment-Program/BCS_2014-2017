@@ -105,23 +105,45 @@ ggplot(aes(`Day of Year`, value)) +
   facet_wrap(~name, scales = "free_y", ncol = 1) +
   geom_point(aes(color = as.factor(year))) +
   scale_color_manual(values = cb[c(2,4,6)]) +
+  theme_bw() +
   theme(legend.title = element_blank()) +
-  theme(axis.title.y = element_blank())
-ggsave("./figs/tanner_julian_temp_depth_long_cpue.png", width = 4.5, height = 7.5, units = 'in')
+  theme(axis.title.y = element_blank()) 
+  
 
 #Dimension reduction for depth/long/day using PCA
-PCA <- prcomp(pca.dat[,3:5], scale = T, center = T)
-PCA$rotation #Variable loadings
-fviz_eig(PCA) #Scree plot, PC1 explains 91%
-fviz_pca_var(PCA, col.var = "contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = TRUE)
-pca.dat$pc1 <- PCA$x[,1]
+pca.dat %>%
+  ungroup() %>%
+  select(julian, longitude, depth) %>%
+  prcomp(scale = T, center = T) -> PCA
 
-#Join pc1 back in
+get_eig(PCA)
+fviz_eig(PCA) #Scree plot: PC1 explains ~82% of variance 
+fviz_pca_var(PCA, col.var = "contrib", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE) + labs(title="") -> plot1
+
+#Extract rotation matrix and plot loadings of pc1
+PCA %>%
+  tidy(matrix = "rotation") %>%
+  filter(PC == 1) %>%
+  mutate(covariate = case_when(column == "julian" ~ "Julian day",
+                               column == "longitude" ~ "Longitude",
+                               column == "depth" ~ "Depth")) %>%
+  select(-PC, -column) %>%
+  ggplot(aes(covariate, value)) +
+  geom_bar(stat='identity') +
+  ylab("Loading") + xlab("") +
+  theme_bw() -> plot2
+
+#Figure S1b for MS
+plot1 + plot2
+
+#Extract pc1 for model runs and join to opilio dataset
+pca.dat$pc1 <- PCA$x[,1] 
+
 pc1 <- pca.dat %>%
-  dplyr::select(station, year, pc1)
+  select(station, year, pc1)
 
-#Final dataset for modeling 
-tanner.dat <- left_join(tanner.dat, pc1)
+opilio.dat <- left_join(tanner.dat, pc1) #Final dataset for modeling 
 
 #####################################################
 #Model 1: base model with crab size, pc1 and random year/index intercept 
