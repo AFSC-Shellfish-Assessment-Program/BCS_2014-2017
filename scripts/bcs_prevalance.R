@@ -64,14 +64,16 @@ prev_n %>%
            index %in% c(4:6)|
            species_name=="Chionoecetes bairdi" &
            index %in% c(1:3)) %>%
+  mutate(species = case_when(species_name == "Chionoecetes opilio" ~ "Snow crab",
+                             species_name == "Chionoecetes bairdi" ~ "Tanner crab")) %>%
   ggplot(aes(x=index, y=Prevalance)) +
   geom_bar(aes(fill=index, group=index),stat='identity', show.legend = FALSE) +
   scale_fill_manual(values = my_colors) +
   geom_errorbar(aes(ymin=CI_lower, ymax=CI_upper), width=0.2, color="grey") + 
   geom_text(aes(label=paste0("n=",n), group=index), vjust = -2.2, size=3) +
   scale_y_continuous(limits = c(0,70)) +
-  labs(x="Monitoring Site", y="Prevalance") +
-  facet_grid(year ~ species_name, scales = "free_x") +
+  labs(x="Monitoring Site", y="Prevalance (%)") +
+  facet_grid(year ~ factor(species, levels = c("Tanner crab", "Snow crab")), scales = "free_x") +
   theme_bw() 
 ggsave("./figs/opilio_tanner_prev.png")
 

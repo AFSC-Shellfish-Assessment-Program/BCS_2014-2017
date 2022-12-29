@@ -86,15 +86,23 @@ ggplot(plot2, aes(fill=name, y=value, x=year)) +
   geom_bar(position="stack", stat="identity") +
   facet_grid(~ index)
 
+#Size range sampled across years
+tanner.dat %>% 
+  summarize(avg_cw = mean(size, na.rm=T), 
+            max_cw = max(size, na.rm=T), 
+            min_cw = min(size, na.rm=T))
+
 #Size composition sampled by index site/yr
 tanner.dat %>%
+  mutate(Sex = recode_factor(sex, '1' = "M", '2' = "F")) %>%
   group_by(year, index) %>%
   ggplot() +
-    geom_histogram(aes(x=size, fill=as.factor(sex), color=as.factor(sex)), position = "stack") +
+  geom_histogram(aes(x=size, fill=Sex), position = "stack", bins=50) +
+  scale_fill_manual(values=c("#00BFC4", "#F8766D")) +
   facet_wrap(~year) +
   theme_bw() +
-  theme(legend.title = element_blank())
-  #facet_grid(year~index)
+  labs(x= "Tanner crab carapace width (mm)", y = "Count")
+ggsave("./figs/tanner_size.png", width=6.75)
 
 #Size-frequency distribution of uninfected vrs infected
 tanner.dat %>%
