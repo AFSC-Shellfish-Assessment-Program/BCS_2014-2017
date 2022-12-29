@@ -24,8 +24,9 @@ source("./scripts/stan_utils.R")
 # load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
 
-# colorblind palette
+# color palettes
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
+my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,5,7)]
 
 ##################################
 #Functions 
@@ -93,23 +94,27 @@ corrplot(cor(pca.dat[,3:7]), method = 'number')
 
 #Plot 
 pca.dat %>%
-  rename(`Day of Year` = julian,
-         `Depth (m)` = depth,
-         `Longitude (W)` = longitude,
-         `Bottom Temperature (C)` = temperature,
-         `Fourth root CPUE` = fourth.root.cpue70) %>%
-  pivot_longer(cols=`Depth (m)`:`Fourth root CPUE`) %>%
-ggplot(aes(`Day of Year`, value)) +
-  geom_point(color = "grey100") +
-  geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = F, color = "black", lwd = 0.3) +
-  facet_wrap(~name, scales = "free_y", ncol = 1) +
+  rename("Depth (m)" = depth,
+         "Longitude (W)" = longitude,
+         "Bottom Temperature (C)" = temperature,
+         "Fourth root CPUE" = fourth.root.cpue70) %>%
+  pivot_longer(4:7, names_to = "variable", values_to = "data") %>% 
+ggplot(aes(julian, data)) +
   geom_point(aes(color = as.factor(year))) +
-  scale_color_manual(values = cb[c(2,4,6)]) +
+  scale_color_manual(values = my_colors) +
+  facet_wrap(~variable, scales = "free_y", ncol = 1) +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = T, alpha = 0.2, 
+              color = "black", lwd = 0.3) +
+  scale_color_manual(values = my_colors) +
   theme_bw() +
-  theme(legend.title = element_blank()) +
-  theme(axis.title.y = element_blank()) 
-  
+  theme(axis.title.y = element_blank()) +
+  theme(legend.position="none") +
+  labs(x= "Day of Year") -> tanner_plot
 
+#Combine plots for Fig 2 of ms (run "analyze_opilio.R" lines 1-124 first)
+tanner_plot + snow_plot + plot_annotation(tag_levels = 'a')
+ggsave("./figs/exog_variables.png")
+  
 #Dimension reduction for depth/long/day using PCA
 pca.dat %>%
   ungroup() %>%

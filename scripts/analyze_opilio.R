@@ -26,8 +26,9 @@ source("./scripts/stan_utils.R")
 # load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
 
-# colorblind palette
+# color palettes
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
+my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,5,7)]
 
 ########################################
 #Functions 
@@ -89,10 +90,10 @@ opilio.dat %>%
                    depth = mean(depth),
                    latitude = mean(latitude),
                    temperature = mean(temperature),
-                   fourth.root.cpue70 = mean(fourth.root.cpue70)) -> pca.dat
+                   fourth.root.cpue70 = mean(fourth.root.cpue70)) -> pca.dat.opilio
 
-cor(pca.dat[,3:7]) #Temperature, latitude, CPUE and julian day r > 0.6
-corrplot(cor(pca.dat[,3:7]), method = 'number') 
+cor(pca.dat.opilio[,3:7]) #Temperature, latitude, CPUE and julian day r > 0.6
+corrplot(cor(pca.dat.opilio[,3:7]), method = 'number') 
 
 #Assess the Variance Inflation Factor of each predictor 
 model <- lm(pcr ~ julian + latitude + temperature + snow70under_cpue, data=opilio.dat ) 
@@ -104,26 +105,26 @@ vif(model) #CPUE VIF fairly low (<2.5)
 #a covariate in the Bayesian regression models 
 
 # plot exogenous variables
-pca.dat %>%
-  rename(`Day of Year` = julian,
-         `Depth (m)` = depth,
-         `Latitude (N)` = latitude,
-         `Bottom Temperature (C)` = temperature,
-         `Fourth root CPUE` = fourth.root.cpue70) %>%
-  pivot_longer(cols=`Depth (m)`:`Fourth root CPUE`) %>%
-  ggplot(aes(`Day of Year`, value)) +
-  geom_point(color = "grey100") +
-  geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = F, color = "black", lwd = 0.3) +
-  facet_wrap(~name, scales = "free_y", ncol = 1) +
+pca.dat.opilio %>%
+  rename("Depth (m)" = depth,
+         "Latitude (N)" = latitude,
+         "Bottom Temperature (C)" = temperature,
+         "Fourth root CPUE" = fourth.root.cpue70) %>%
+  pivot_longer(4:7, names_to = "variable", values_to = "data") %>% 
+  ggplot(aes(julian, data)) +
   geom_point(aes(color = as.factor(year))) +
-  scale_color_manual(values = cb[c(2,4,6)]) +
+  scale_color_manual(values = my_colors) +
+  facet_wrap(~variable, scales = "free_y", ncol = 1) +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = T, alpha = 0.2, 
+              color = "black", lwd = 0.3) +
+  scale_color_manual(values = my_colors) +
   theme_bw() +
   theme(legend.title = element_blank()) +
-  theme(axis.title.y = element_blank())
-
+  theme(axis.title.y = element_blank()) +
+  labs(x= "Day of Year") -> snow_plot
 
 #Dimension reduction for temp/lat/day using PCA
-pca.dat %>%
+pca.dat.opilio %>%
   ungroup() %>%
   select(julian, latitude, temperature) %>%
   prcomp(scale = T, center = T) -> PCA
@@ -150,9 +151,9 @@ PCA %>%
 plot1 + plot2
 
 #Extract pc1 for model runs and join to opilio dataset
-pca.dat$pc1 <- PCA$x[,1] 
+pca.dat.opilio$pc1 <- PCA$x[,1] 
 
-pc1 <- pca.dat %>%
+pc1 <- pca.dat.opilio %>%
   select(station, year, pc1)
 
 opilio.dat <- left_join(opilio.dat, pc1) #Final dataset for modeling 
