@@ -13,9 +13,12 @@ library(MARSS)
 library(corrplot)
 library(factoextra)
 library(patchwork)
+library(modelr)
 library(broom.mixed)
 library(pROC)
+library(ggthemes)
 library(tidybayes)
+library(RColorBrewer)
 library(knitr)
 library(loo)
 library(sjPlot)
@@ -148,7 +151,7 @@ pca.dat$pc1 <- PCA$x[,1]
 pc1 <- pca.dat %>%
   select(station, year, pc1)
 
-opilio.dat <- left_join(tanner.dat, pc1) #Final dataset for modeling 
+tanner.dat <- left_join(tanner.dat, pc1) #Final dataset for modeling 
 
 #####################################################
 #Model 1: base model with crab size, pc1 and random year/index intercept 
@@ -295,7 +298,7 @@ conditional_smooths(tanner2, effects = "julian") #Very similar smooths- depth an
 
 #Although tanner1 has better predictive capacity, let's move
   #forward with julian day to capture seasonal progression for ease of interpretation and consistency 
-  #with snow crab base model structure 
+  #with snow crab base model structure (julian day and pc1 effects very similar)
 
 #################################################
 # Model 3: Add temperature to base model 2 
@@ -524,7 +527,7 @@ stacking_wts <- loo_model_weights(loo_list, method="stacking")
 pbma_BB_wts <- loo_model_weights(loo_list, method = "pseudobma")
 pbma_wts <- loo_model_weights(loo_list, method = "pseudobma", BB = FALSE)
 round(cbind(stacking_wts, pbma_wts, pbma_BB_wts),2)
-#Tanner3 consistently highest weighted model...enough rationale to select?
+#Tanner3 consistently highest weighted model
   
 #Save model output 
 tab_model(tanner2, tanner3, tanner4, tanner5)
@@ -559,7 +562,8 @@ ggplot(tibble(stacking = pred_stacking[ , "Estimate"],
               pbma = pred_pbma[ , "Estimate"]), aes(x = pbma, y = stacking)) + 
   geom_point() + 
   geom_abline(intercept = 0, slope = 1) +
-  labs(x="Pseudo-Bayesian Model Averaging", y="Model Stacking") #two methods give very similar predictions
+  labs(x="Pseudo-Bayesian Model Averaging", y="Model Stacking") 
+#two methods give very similar predictions
 
 ###############################
 #Explore tanner3 vrs tanner4....top two models (base + temp, base + temp + CPUE) 
@@ -613,7 +617,7 @@ tibble(idx = seq_along(k_tanner3),
 #No influence points (all khat <0.7). One khat value > 0.5 in tanner3
 
 ###########################
-#Below is a preliminary final model using tanner3, though all models tested are very similar
+#Final model using tanner3, though all models tested are very similar
   
 #Final Model:  Run tanner3 model with 10,000 iterations and set seed for reproducibility 
 tannerfinal <- brm(tanner3_formula,
@@ -634,7 +638,6 @@ rhat_highest(tannerfinal$fit)
 summary(tannerfinal)
 bayes_R2(tannerfinal)
 
-
 #Diagnostic Plots
 plot(tannerfinal, ask = FALSE)
 plot(conditional_smooths(tannerfinal), ask = FALSE)
@@ -644,7 +647,7 @@ mcmc_acf(tannerfinal, pars = c("b_Intercept", "bs_ssize_1", "bs_stemperature_1")
 mcmc_neff(neff_ratio(tannerfinal)) #Effective sample size: All ratios > 0.1
 marginal_effects(tannerfinal, surface = TRUE) #visualize effects of predictors on the expected response
 marginal_smooths(tannerfinal) #
-hypothesis(tannerfinal, "sjulian_1 < 0")
+hypothesis(tannerfinal, "ssize_1 < 0")
 
 #Posterior Predictive Check: Mean and skewness summary statistics 
 color_scheme_set("red")
@@ -676,24 +679,40 @@ auc <- apply(preds, 1, function(x) {
 })
 hist(auc) #Looks like our model discriminates fairly well 
 
-# extract posterior draws in an array format
-draws_fit <- as_draws_array(tannerfinal)
-posterior::summarize_draws(draws_fit)
-
-#Get posterior estimates with tidybayes 
-get_variables(tannerfinal)
-
-post_beta_means <- tannerfinal %>% 
-  gather_draws(b_Intercept, bs_ssize_1, bs_spc1_1,
-               sd_year__Intercept, `sd_year:index__Intercept`, 
-               `sd_year:index:station_Intercept`, sds_ssize_1, sds_spc1_1) %>% 
-  median_hdi() #Huh, stumped on how to use spread/gather_draws with multilevel models, 
-              #Might have to come back to this one 
-
 ################################
 #Plot predicted effects from best model
 
-#Size
+#Credible interval plot 
+as_draws_df(tannerfinal) %>%
+  select(starts_with("sds")) %>%
+  pivot_longer(everything()) %>%
+  group_by(name) %>%
+  median_qi(.width = seq(from = .5, to = .9, by = .1)) %>%
+  ggplot(aes(x = value, xmin = .lower, xmax = .upper, y = reorder(name, value))) +
+  geom_interval(aes(alpha = .width), color = "orange3") +
+  scale_alpha_continuous("CI width", range = c(.7, .15)) +
+  scale_y_discrete(labels = ggplot2:::parse_safe) +
+  xlim(0, NA) +
+  theme(axis.text.y = element_text(hjust = 0),
+        panel.grid.major.y = element_blank())
+
+#Size effect plot approach that doesn't work - add_predicted_draws needs all parameters? 
+tanner.dat %>%
+  data_grid(size = seq_range(size, n = 500)) %>%
+  add_predicted_draws(tannerfinal) %>% #adding the posterior distribution 
+  ggplot(aes(x = size, y = pcr)) +  
+  stat_lineribbon(aes(y = .prediction), .width = c(.95, .9, .8),  #regression line and CI
+                  alpha = 0.5, colour = "black") +
+  geom_point(data = tanner.dat, colour = "darkseagreen4", size = 3) + #raw data
+  scale_fill_brewer(palette = "Greys") +
+    labs(x = "Carapace width (mm)", y = "Probability of infection") +
+  theme_bw() +
+  theme(legend.title = element_blank(),
+        legend.position = c(0.15, 0.85))
+
+
+#Size effect plot (method 2)
+#Need to save settings from conditional effects as an object to plot in ggplot
 ## 95% CI
 ce1s_1 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
                               probs = c(0.025, 0.975))
@@ -703,6 +722,7 @@ ce1s_2 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
 ## 80% CI
 ce1s_3 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
                               probs = c(0.1, 0.9))
+
 dat_ce <- ce1s_1$size
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
 dat_ce[["lower_95"]] <- dat_ce[["lower__"]]
@@ -711,15 +731,14 @@ dat_ce[["lower_90"]] <- ce1s_2$size[["lower__"]]
 dat_ce[["upper_80"]] <- ce1s_3$size[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$size[["lower__"]]
 
-ggplot(dat_ce) +
-  aes(x = effect1__, y = estimate__) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
-  geom_line(size = 1, color = "red3") +
+ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_line(size = 1, color = "black") +
+  geom_point(data = tanner.dat, aes(x = size, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
   labs(x = "Carapace width (mm)", y = "Probability of infection") +
   theme_bw() -> sizeplot
-  
 
 ##Julian Day
 ## 95% CI
@@ -739,16 +758,15 @@ dat_ce[["lower_90"]] <- ce1s_2$julian[["lower__"]]
 dat_ce[["upper_80"]] <- ce1s_3$julian[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$julian[["lower__"]]
 
-ggplot(dat_ce) +
-  aes(x = effect1__, y = estimate__) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
-  geom_line(size = 1, color = "red3") +
+ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_line(size = 1, color = "black") +
+  geom_point(data = tanner.dat, aes(x = julian, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
   labs(x = "Julian Day", y = "") +
   theme_bw() -> dayplot
   
-
 ##Temperature 
 ## 95% CI
 ce1s_1 <- conditional_effects(tannerfinal , effect = "temperature", re_formula = NA,
@@ -767,22 +785,21 @@ dat_ce[["lower_90"]] <- ce1s_2$temperature[["lower__"]]
 dat_ce[["upper_80"]] <- ce1s_3$temperature[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$temperature[["lower__"]]
 
-ggplot(dat_ce) +
-  aes(x = effect1__, y = estimate__) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
-  geom_line(size = 1, color = "red3") +
+ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_line(size = 1, color = "black") +
+  geom_point(data = tanner.dat, aes(x = temperature, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
   labs(x = "Temperature (C)", y = "") +
   theme_bw() -> tempplot
 
-#Combine plots for Fig 4 of MS
-(sizeplot | dayplot | tempplot) 
-ggsave("./figs/tannerFig4.png")
+#Combine plots for Fig 5 of MS
+sizeplot + dayplot + tempplot + plot_annotation(tag_levels = 'a')
+ggsave("./figs/tannerFig5.png")
   
-
 #####################################################
-#Predictions for final model ...need to follow up on this 
+#Predictions for final model 
 
 #Predict for size < 60mm
 new.dat <- tanner.dat %>%
@@ -794,14 +811,13 @@ new.dat <- tanner.dat %>%
 tanner.dat$yr_ind_st <- paste(tanner.dat$year, tanner.dat$index, tanner.dat$station, sep = "_")
 
 
-new.dat <- data.frame(yr_ind_st = unique(tanner.dat$yr_ind_st),
+new.dat <- data.frame(yr_ind_st = unique(tanner.dat$yr_ind),
                       size = 30,
                       pc1 = mean(unique(tanner.dat$pc1))
                       )
 
 new.dat$year <- map_chr(str_split(new.dat$yr_ind_st, "_"), 1)
 new.dat$index <- map_chr(str_split(new.dat$yr_ind_st, "_"), 2)
-new.dat$station <- map_chr(str_split(new.dat$yr_ind_st, "_"), 3)
 
 posterior.predict <- posterior_epred(tannerfinal, newdata = new.dat)
 
@@ -824,3 +840,55 @@ ggplot(tanner.estimate) +
 
 ggsave("./figs/tanner estimate.png", width = 2, height = 2.5, units = 'in')
 
+##################################
+
+#plot the posterior predictive distribution across the observed range of size
+ 
+nd <-
+    tanner.dat %>% 
+    distinct(year, pcr, size) %>%
+    mutate(julian=163, temperature=2.3) #would need to take max(size) 
+  #should take weighted average julian day and avg temp 
+  
+  # compute and wrangle the posterior predictions
+  fitted(tannerfinal,
+         newdata = nd,
+         probs = c(.025, .975, .05, .95, .1, .9),
+         re_formula = NA) %>% 
+    data.frame() %>% 
+    bind_cols(nd)  %>% 
+    # plot
+    ggplot(aes(x = size)) +
+    # posterior predictions
+    geom_line(aes(y = Estimate)) +
+    geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), color="grey90", alpha=.1) + 
+    geom_ribbon(aes(ymin = Q5, ymax = Q95), color="grey85", alpha=.1) +
+    geom_ribbon(aes(ymin = Q10, ymax = Q90), color="grey80", alpha=.1) +
+    facet_wrap(~ year, nrow = 1) +
+    theme_bw()
+#Why are the estimates so small? 
+  
+#Adding predictions here?
+  nd <-
+    tanner.dat %>% 
+    distinct(year, index, temperature, pcr, size) %>%
+    mutate(julian=163, temperature=2.3) 
+    
+    bind_cols(
+      fitted(tannerfinal, newdata = nd, 
+             probs = c(.025, .975, .05, .95, .1, .9),
+             re_formula = NA) %>% 
+        data.frame(),
+      predict(tannerfinal, newdata = nd) %>% 
+        data.frame()) %>% 
+    bind_cols(nd) %>% 
+      ggplot(aes(x = year)) +
+      # posterior predictions
+      geom_line(aes(y = Estimate...1)) +
+      geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), color="grey90", alpha=.1) + 
+      geom_ribbon(aes(ymin = Q5, ymax = Q95), color="grey85", alpha=.1) +
+      geom_ribbon(aes(ymin = Q10, ymax = Q90), color="grey80", alpha=.1) +
+      theme_bw()
+    
+   
+   

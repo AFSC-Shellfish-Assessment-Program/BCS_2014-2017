@@ -614,19 +614,32 @@ hist(auc) #Model discriminates fairly well
 ###########################
 # Plot predicted effects from final model
 
-#Sex
+#Credible interval plot 
+as_draws_df(opiliofinal) %>%
+  select(starts_with("sds")) %>%
+  pivot_longer(everything()) %>%
+  group_by(name) %>%
+  median_qi(.width = seq(from = .5, to = .9, by = .1)) %>%
+  ggplot(aes(x = value, xmin = .lower, xmax = .upper, y = reorder(name, value))) +
+  geom_interval(aes(alpha = .width), color = "orange3") +
+  scale_alpha_continuous("CI width", range = c(.7, .15)) +
+  scale_y_discrete(labels = ggplot2:::parse_safe) +
+  xlim(0, NA) +
+  theme(axis.text.y = element_text(hjust = 0),
+        panel.grid.major.y = element_blank())
+
+#Sex Effect Plot 
 ce1s_1 <- conditional_effects(opiliofinal, effect = "sex", re_formula = NA,
                               probs = c(0.025, 0.975)) 
 ce1s_1$sex %>%
   dplyr::select(sex, estimate__, lower__, upper__) %>%
   mutate(sex = case_when(sex == 1 ~ "Male",
                          sex == 2 ~ "Female")) %>%
-ggplot(aes(sex, estimate__)) +
+ggplot(aes(factor(sex, levels = c("Male", "Female")), estimate__)) +
   geom_point(size=3) +
   geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
   ylab("Probability of infection") + xlab("") +
   theme_bw() -> sexplot
-
 
 #Size
 ## 95% CI
@@ -646,13 +659,13 @@ dat_ce[["lower_90"]] <- ce1s_2$size[["lower__"]]
 dat_ce[["upper_80"]] <- ce1s_3$size[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$size[["lower__"]]
 
-ggplot(dat_ce) +
-  aes(x = effect1__, y = estimate__) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
-  geom_line(size = 1, color = "red3") +
-  labs(x = "Carapace width (mm)", y = "Probability of infection") +
+ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_line(size = 1, color = "black") +
+  geom_point(data = opilio.dat, aes(x = size, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
+  labs(x = "Carapace width (mm)", y = "") +
   theme_bw() -> sizeplot
 
 #Julian Day
@@ -673,12 +686,12 @@ dat_ce[["lower_90"]] <- ce1s_2$julian[["lower__"]]
 dat_ce[["upper_80"]] <- ce1s_3$julian[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$julian[["lower__"]]
 
-ggplot(dat_ce) +
-  aes(x = effect1__, y = estimate__) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
-  geom_line(size = 1, color = "red3") +
+ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_line(size = 1, color = "black") +
+  geom_point(data = opilio.dat, aes(x = julian, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
   labs(x = "Julian Day", y = "Probability of infection") +
   theme_bw() -> dayplot
 
@@ -700,12 +713,12 @@ dat_ce[["lower_90"]] <- ce1s_2$depth[["lower__"]]
 dat_ce[["upper_80"]] <- ce1s_3$depth[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$depth[["lower__"]]
 
-ggplot(dat_ce) +
-  aes(x = effect1__, y = estimate__) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
-  geom_line(size = 1, color = "red3") +
+ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_line(size = 1, color = "black") +
+  geom_point(data = opilio.dat, aes(x = depth, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
   labs(x = "Depth (m)", y = "Probability of infection") +
   theme_bw() -> depthplot
 
@@ -727,20 +740,19 @@ dat_ce[["lower_90"]] <- ce1s_2$fourth.root.cpue70[["lower__"]]
 dat_ce[["upper_80"]] <- ce1s_3$fourth.root.cpue70[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$fourth.root.cpue70[["lower__"]]
 
-ggplot(dat_ce) +
-  aes(x = effect1__, y = estimate__) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "grey90") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "grey85") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "grey80") +
-  geom_line(size = 1, color = "red3") +
-  labs(x = "Immature CPUE (num/nmi2)", y = "Probability of infection") +
+ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_line(size = 1, color = "black") +
+  geom_point(data = opilio.dat, aes(x = fourth.root.cpue70, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
+  labs(x = "Snow crab CPUE", y = "Probability of infection") +
   theme_bw() -> cpueplot
 
-#Combine plots for Fig 5 of MS
-(sexplot | sizeplot | cpueplot) /
-  (depthplot | dayplot)
-ggsave("./figs/opilioFig5.png")
-
+#Combine plots for Fig 6 of MS
+(sexplot + sizeplot) / (dayplot + depthplot) / (cpueplot + plot_spacer()) +
+  plot_annotation(tag_levels = 'a')
+ggsave("./figs/opilioFig6.png", height=9)
 
 ###################################
 ## predict overall occurance....need to follow up on this

@@ -13,10 +13,21 @@ library(lubridate)
 # load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
 
-#Load color pallette
+#Load color palette
 my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[4:7]
 
 ############################################
+#Sample sizes
+dat %>%
+  filter(index_site %in% c(1:6),
+         year %in% c(2015:2017),
+         sex %in% c(1, 2),
+         pcr_result %in% c(1, 0)) %>%
+  summarize(total = n(),
+            pcr_pos = sum(pcr_result==1),
+            vis_pos = sum(visual_positive==1))
+
+#Calculate sensitivity and specificity
 dat %>%
   filter(index_site %in% c(1:6),
          year %in% c(2015:2017),
@@ -104,7 +115,7 @@ dat2 %>%
   #difference in sensitivity by date sampled or crab size 
 
 ######################################################
-#Plot Diagnostics 
+#Plot Classification Accuracy  
 
 #All data
 dat %>%
