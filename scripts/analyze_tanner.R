@@ -641,7 +641,8 @@ bayes_R2(tannerfinal)
 #Diagnostic Plots
 plot(tannerfinal, ask = FALSE)
 plot(conditional_smooths(tannerfinal), ask = FALSE)
-mcmc_plot(tannerfinal, type = "areas", prob = 0.95)
+mcmc_plot(tannerfinal, prob = 0.95)
+mcmc_plot(tannerfinal, transformations = "inv_logit_scaled")
 mcmc_rhat(rhat(tannerfinal)) #Potential scale reduction: All rhats < 1.1
 mcmc_acf(tannerfinal, pars = c("b_Intercept", "bs_ssize_1", "bs_stemperature_1"), lags = 10) #Autocorrelation of selected parameters
 mcmc_neff(neff_ratio(tannerfinal)) #Effective sample size: All ratios > 0.1
@@ -698,7 +699,8 @@ as_draws_df(tannerfinal) %>%
 
 #Size effect plot approach that doesn't work - add_predicted_draws needs all parameters? 
 tanner.dat %>%
-  data_grid(size = seq_range(size, n = 500)) %>%
+  data_grid(size = seq_range(size, n = 500), temperature = seq_range(temperature, n=500),
+            julian = seq_range(julian, n=500)) %>%
   add_predicted_draws(tannerfinal) %>% #adding the posterior distribution 
   ggplot(aes(x = size, y = pcr)) +  
   stat_lineribbon(aes(y = .prediction), .width = c(.95, .9, .8),  #regression line and CI
