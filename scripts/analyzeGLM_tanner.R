@@ -1,5 +1,5 @@
 # notes ----
-#Testing preliminary GLM models with tanner crab data
+#Testing preliminary GLMM models with tanner crab data
 
 # Author: Erin Fedewa
 # last updated: 2022/1/20
@@ -116,7 +116,8 @@ ggplot(plot, aes(Day_of_year, value)) +
   scale_color_manual(values = cb[c(2,4,6)]) +
   theme(legend.title = element_blank())
 
-# DFA is hard here b/c we want to include time as one of the time series, *and* we don't have continuous observations for DFA
+# DFA is hard here b/c we want to include time as one of the time series, *and* 
+  #we don't have continuous observations for DFA
 
 # Fit a PCA
 PCA <- prcomp(pca.dat[,3:5], scale = T, center = T)
@@ -175,25 +176,19 @@ AIC(glm.full,glm.smooth)
   #year/site/station nested design and 2) find optimal fixed structure 
 
 ### Random effects structure:
-#Model 1:  Size and PC1 as linear fixed effect, nested year-index-station as random intercept 
-glmm.1 <- glmer(pcr ~ size + pc1 + (1 | year/index/station), family=binomial(link = "logit"), data=tanner.dat)
+#Model 1:  Size and PC1 as linear fixed effect, nested year-index as random intercept 
+glmm.1 <- glmer(pcr ~ size + pc1 + (1 | year/index), family=binomial(link = "logit"), data=tanner.dat)
   summary(glmm.1) #Warning: random effects are very small 
-
-#Model 2: Size and PC1 as linear fixed effect, nested index-station as random intercept 
-glmm.2 <- glmer(pcr ~ size + pc1 + (1 | index/station), family=binomial(link = "logit"), data=tanner.dat)
-summary(glmm.2) #Warning: random effects are very small 
-
-anova(glmm.1,glmm.2) #year/index/site structure preferred 
 
 ###Fixed effects structure:
 #Full model with all fixed effects
     #NOTE: Should be using ML to estimate fixed effects but you can't specify method= in glmer?? 
-glmm.full <- glmer(pcr ~ size + year + pc1 + temperature + fourth.root.cpue70 + (1 | year/index/station),
+glmm.full <- glmer(pcr ~ size + year + pc1 + temperature + fourth.root.cpue70 + (1 | year),
                    family=binomial(link = "logit"), data=tanner.dat)
 summary(glmm.full) #Convergence issues...running out of df? 
 
 #Full model with nonlinear fixed effects
-glmm.full.smooth <- glmer(pcr ~ ns(size,3) + year + ns(pc1,3) + ns(temperature,3) + ns(fourth.root.cpue70,3) + (1 | year/index/station),
+glmm.full.smooth <- glmer(pcr ~ ns(size,3) + year + ns(pc1,3) + ns(temperature,3) + ns(fourth.root.cpue70,3) + (1 | year/index),
                    family=binomial(link = "logit"), data=tanner.dat) 
 summary(glmm.full.smooth) #Convergence issues...running out of df?
 
@@ -216,7 +211,7 @@ anova(glmm.4, glmm.5)
 summary(glmm.5)
 
 #Refit best model with REML....but no method argument
-glmm.final <- glmer(pcr ~ size + pc1 + (1 | year/index/station), family=binomial(link = "logit"), data=tanner.dat)
+glmm.final <- glmer(pcr ~ size + pc1 + (1 | year/index), family=binomial(link = "logit"), data=tanner.dat)
   
 # Explore residuals
 plot(glmm.final) #Yikes....several high leverage observations 
@@ -229,7 +224,7 @@ visreg(glmm.final, "size", scale="response")
 #Effect size 
 sjPlot::plot_model(glmm.final, show.values = TRUE, value.offset = .3)
 
-
+#Moving to Bayesian hierarchical modeling approach 
 
 
 

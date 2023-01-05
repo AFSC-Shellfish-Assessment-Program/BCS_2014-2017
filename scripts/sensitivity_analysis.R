@@ -2,7 +2,7 @@
 #Sensitivity and specificity analysis between PCR and visual diagnosis
 
 # Author: Erin Fedewa
-# last updated: 2022/10/31
+# last updated: 2023/1/3
 
 #Follow ups: add CI's for sensitivity and specificity 
 

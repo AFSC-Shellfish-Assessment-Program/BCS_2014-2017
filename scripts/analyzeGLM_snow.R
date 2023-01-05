@@ -46,23 +46,13 @@ dat %>%
                 station = as.factor(station),
                 fourth.root.cpue70 = fourth.root.cpue70^0.25) -> opilio.dat # transforming cpue here
 
-nrow(opilio.dat) # 1511 samples!
+nrow(opilio.dat) 
 
 #Check for missing data 
 opilio.dat %>%
-  select(size, sex, index, julian, latitude, depth, temperature) %>%
+  dplyr::select(size, sex, index, julian, latitude, depth, temperature) %>%
   filter(!complete.cases(.)) 
-  summarise(num_na = sum(is.na(.)))
-# Looks like one row of NA in year == 2015, station == I-23
-
-  #Fix and overwrite 
-  opilio.dat %>%
-    mutate(julian = replace_na(189),
-           latitude = replace_na(57.67492),
-           depth = replace_na(100),
-           temperature = replace_na(2.3)) %>%
-    filter(!is.na(size)) -> opilio.dat
-
+  
 #Data exploration
 opilio.dat %>%
   group_by(year, station) %>%
@@ -131,9 +121,8 @@ ggplot(plot, aes(Day_of_year, value)) +
   scale_color_manual(values = cb[c(2,4,6)]) +
   theme(legend.title = element_blank())
 
-ggsave("./figs/opilio_julian_temp_depth_long_cpue.png", width = 4.5, height = 7.5, units = 'in')
-
-# DFA is hard here b/c we want to include time as one of the time series, *and* we don't have continuous observations for DFA
+# DFA is hard here b/c we want to include time as one of the time series, *and* 
+  #we don't have continuous observations for DFA
 
 # following Tanner analysis - fit a PCA
 # use julian, latitude, temperature
@@ -150,7 +139,7 @@ pc1 <- pca.dat %>%
 opilio.dat <- left_join(opilio.dat, pc1)
 
 ####################################################
-#Approach 1: use GLM's to assess whether occurance varies as a function of size/pc1/year/depth/cpue 
+#Approach 1: use GLM's to assess whether occurrence varies as a function of size/pc1/year/depth/cpue 
 #No random effects here- not accounting for variation across index sites/nested design
 
 #Full model with size/pc1/year/depth/cpue
@@ -179,28 +168,22 @@ visreg(mod.glm.final, "fourth.root.cpue70", scale="response")
 
 ###################################################
 #Approach 2: Use GLMM's to specify 1) a random structure for 
-#year/site/station nested design and 2) find optimal fixed structure 
+#year/site nested design and 2) find optimal fixed structure 
 
 ### Random effects structure:
 #Model 1:  Size and PC1 as linear fixed effect, nested year-index-station as random intercept 
-glmm.1 <- glmer(pcr ~ size + pc1 + (1 | year/index/station), family=binomial(link = "logit"), data=opilio.dat)
+glmm.1 <- glmer(pcr ~ size + pc1 + (1 | year/index), family=binomial(link = "logit"), data=opilio.dat)
 summary(glmm.1)  
-
-#Model 2: Size and PC1 as linear fixed effect, nested index-station as random intercept 
-glmm.2 <- glmer(pcr ~ size + pc1 + (1 | index/station), family=binomial(link = "logit"), data=opilio.dat)
-summary(glmm.2) #Warning: random effects are very small 
-
-anova(glmm.1,glmm.2) #year/index/site structure preferred 
 
 ###Fixed effects structure:
 #Full model with all fixed effects
 #NOTE: Should be using ML to estimate fixed effects but you can't specify method= in glmer?? 
-glmm.full <- glmer(pcr ~ size + year + pc1 + depth + fourth.root.cpue70 + (1 | year/index/station),
+glmm.full <- glmer(pcr ~ size + year + pc1 + depth + fourth.root.cpue70 + (1 | year/index),
                    family=binomial(link = "logit"), data=opilio.dat)
 summary(glmm.full) #Convergence issues...running out of df? 
 
 #Full model with nonlinear fixed effects
-glmm.full.smooth <- glmer(pcr ~ ns(size,3) + year + ns(pc1,3) + ns(depth,3) + ns(fourth.root.cpue70,3) + (1 | year/index/station),
+glmm.full.smooth <- glmer(pcr ~ ns(size,3) + year + ns(pc1,3) + ns(depth,3) + ns(fourth.root.cpue70,3) + (1 | year/index),
                           family=binomial(link = "logit"), data=opilio.dat) 
 summary(glmm.full.smooth) #Convergence issues...running out of df?
 
@@ -235,3 +218,6 @@ visreg(glmm.final, "year", scale="response")
 
 #Effect size 
 sjPlot::plot_model(glmm.final, show.values = TRUE, value.offset = .3)
+
+#Decision to move forward with hierarchical Bayesian modeling and ditch 
+  #frequentist approach 
