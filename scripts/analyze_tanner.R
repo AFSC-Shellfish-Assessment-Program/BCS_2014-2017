@@ -969,17 +969,22 @@ ggplot(years_ame,aes(x = .value, fill=year)) +
   theme_bw()
 
 #Combine tanner/snow effects (run lines 862-902 in analyze_opilio.R first)
+dodge <- position_dodge(width=0.5) #to offset datapoints on plot 
+
 year_tanner %>%
   full_join(year_snow) %>%
 #Combined conditional effect plot 
 ggplot() +
   geom_point(aes(year, estimate__, color=factor(species, 
-                                                levels = c("Tanner crab", "Snow crab"))), size=3) +
+                  levels = c("Tanner crab", "Snow crab"))), size=3,
+                  position=dodge) +
   geom_errorbar(aes(year, ymin=lower__, ymax=upper__, color=factor(species, 
-                                levels = c("Tanner crab", "Snow crab"))), width=0.3, size=0.5) +
+                  levels = c("Tanner crab", "Snow crab"))), width=0.3, 
+                    size=0.5, position=dodge) +
   ylab("Probability of infection") + xlab("") +
   scale_colour_manual(values = new_colors) +
   theme_bw() +
+  theme(panel.grid.major.x = element_blank()) +
   theme(legend.title= element_blank())
   ggsave("./figs/yearFig7.png", height=3, width=4)
 
