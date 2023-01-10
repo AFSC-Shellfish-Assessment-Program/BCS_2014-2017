@@ -9,19 +9,23 @@ library(lubridate)
 library(rstan)
 library(brms)
 library(bayesplot)
+library(marginaleffects)
+library(emmeans)
 library(MARSS)
 library(corrplot)
 library(factoextra)
 library(patchwork)
+library(modelr)
 library(broom.mixed)
 library(pROC)
+library(ggthemes)
 library(tidybayes)
+library(RColorBrewer)
 library(knitr)
-library(car)
 library(loo)
 library(sjPlot)
-library(broom)
 source("./scripts/stan_utils.R")
+
 
 # load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
@@ -612,23 +616,11 @@ auc <- apply(preds, 1, function(x) {
 hist(auc) #Model discriminates fairly well 
 
 ###########################
-# Plot predicted effects from final model
+#Extract and plot conditional effects of each predictor from best model
+#conditioning on the mean for all other predictors, yr/site effects ignored 
 
-#Credible interval plot 
-as_draws_df(opiliofinal) %>%
-  select(starts_with("sds")) %>%
-  pivot_longer(everything()) %>%
-  group_by(name) %>%
-  median_qi(.width = seq(from = .5, to = .9, by = .1)) %>%
-  ggplot(aes(x = value, xmin = .lower, xmax = .upper, y = reorder(name, value))) +
-  geom_interval(aes(alpha = .width), color = "orange3") +
-  scale_alpha_continuous("CI width", range = c(.7, .15)) +
-  scale_y_discrete(labels = ggplot2:::parse_safe) +
-  xlim(0, NA) +
-  theme(axis.text.y = element_text(hjust = 0),
-        panel.grid.major.y = element_blank())
-
-#Sex Effect Plot 
+#Sex effect plot 
+#Need to save settings from conditional effects as an object to plot in ggplot
 ce1s_1 <- conditional_effects(opiliofinal, effect = "sex", re_formula = NA,
                               probs = c(0.025, 0.975)) 
 ce1s_1$sex %>%
@@ -755,46 +747,175 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
 ggsave("./figs/opilioFig6.png", height=9)
 
 ###################################
-## predict overall occurance....need to follow up on this
-#need to extract year random effect out of output b/c should give you the mean
-#and 95% for each year. exract_draws()
+#Marginal Effects: instantaneous slope of one explanatory value with all 
+  #other values held constant 
 
-# first, create a combined year_index column to identify combinations that exist in the data
-opilio.dat$yr_ind <- paste(opilio.dat$year, opilio.dat$index, sep = "_")
+#Marginal effect at the mean: julian day 
+opiliofinal %>%
+  emtrends(~ julian, 
+           var = "julian", 
+           regrid = "response", re_formula = NA)
+#on average, a one-day increase in Julian day is associated with a 3.5% increase in 
+#the probability of infection
+
+#Marginal effect at various levels of julian day 
+opiliofinal %>% 
+  emtrends(~ julian, var = "julian",
+           at = list(julian = 
+                       seq(min(opilio.dat$julian), 
+                           max(opilio.dat$julian), 1)),
+           re_formula = NA) %>%
+  as_tibble() %>%
+#and plot 
+ggplot(aes(x = julian, y = julian.trend )) +
+  geom_ribbon(aes(ymin = lower.HPD, ymax = upper.HPD), alpha = 0.1) +
+  geom_line(size = 1) +
+  scale_fill_brewer(palette = "Reds") +
+  labs(x = "Julian Day", y = "Marginal effect of julian day on probability of infection") +
+  theme_bw() 
+
+#Marginal effect at the mean: sex
+opiliofinal %>%
+  emmeans(~ sex, 
+           var = "sex", 
+           regrid = "response", re_formula = NA)
+#Females have a 9.3% increase in the probability of infection than males 
+
+# Posterior predictions by sex
+grand_mean <- opiliofinal %>% 
+  epred_draws(newdata = expand_grid(sex = c(1, 2),
+                                    julian = mean(opilio.dat$julian),
+                                    depth = mean(opilio.dat$depth),
+                                    size = mean(opilio.dat$size), 
+                                    fourth.root.cpue70 = mean(opilio.dat$fourth.root.cpue70)), 
+              re_formula = NA)
+
+#plot
+ggplot(grand_mean, aes(x = .epred, y = "Grand mean", fill = sex)) +
+  stat_halfeye() +
+  labs(x = "Predicted probability of infection", y = NULL,
+       fill = "Sex",
+       subtitle = "Posterior predictions") +
+  theme_bw() 
+
+######################################################
+#Generating posterior predictions for final model 
+
+#global julian mean-ignoring year/site specific deviations 
+grand_mean <- opiliofinal %>% 
+  #create dataset across a range of observed julian days sampled
+  epred_draws(newdata = expand_grid(julian = range(opilio.dat$julian),
+                                    depth = mean(opilio.dat$depth),
+                                    size = mean(opilio.dat$size), 
+                                    fourth.root.cpue70 = mean(opilio.dat$fourth.root.cpue70),
+                                    sex = levels(opilio.dat$sex)),  
+              re_formula = NA) #ignoring random effects 
+#plot
+ggplot(grand_mean, aes(x = julian, y = .epred)) +
+  stat_lineribbon() +
+  scale_fill_brewer(palette = "Reds") +
+  labs(x = "Julian day", y = "Probability of infection",
+       fill = "Credible interval") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+##########
+#Year-specific posterior predictions across day 
+all_years <- opiliofinal %>% 
+  epred_draws(newdata = expand_grid(julian = range(opilio.dat$julian),
+                                    depth = mean(opilio.dat$depth),
+                                    size = mean(opilio.dat$size), 
+                                    fourth.root.cpue70 = mean(opilio.dat$fourth.root.cpue70),
+                                    sex = levels(opilio.dat$sex), 
+                                    year = levels(opilio.dat$year)), 
+              re_formula = ~ (1 | year)) #only predict using yr effects, not site too 
+
+ggplot(all_years, aes(x = julian, y = .epred)) +
+  stat_lineribbon() +
+  scale_fill_brewer(palette = "Reds") +
+  labs(x = "Day of year", y = "Probability of Infection",
+       fill = "Credible interval") +
+  facet_wrap(vars(year)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+#average marginal effect by year
+all_years_ame <- opiliofinal %>% 
+  emtrends(~ julian + year,
+           var = "julian",
+           at = list(year = levels(opilio.dat$year)),
+           epred = TRUE, re_formula = ~ (1 | year)) %>% 
+  gather_emmeans_draws()
+
+ggplot(all_years_ame,aes(x = .value)) +
+  stat_halfeye(slab_alpha = 0.75) +
+  labs(x = "Average marginal effect of a 1 day increase in sampling",
+       y = "Density") +
+  facet_wrap(~year) +
+  theme_bw()
+
+#post and interval summaries of draws from size effect 
+all_years_ame %>% median_hdi()
+#Probability of infection varies by year 
+
+#####
+#Lastly, to look at the effect of year on prob of infection, lets use best model
+#with year as a fixed effect 
+
+## fit snow model
+snow_year_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + 
+                           s(fourth.root.cpue70, k = 4) 
+                         + sex + s(depth, k = 4) + year + (1 | index))
 
 
-new.dat <- data.frame(yr_ind = unique(opilio.dat$yr_ind),
-                      size = 30,
-                      julian = mean(unique(opilio.dat$julian)),
-                      depth = mean(unique(opilio.dat$depth)),
-                      fourth.root.cpue70 = mean(unique(opilio.dat$fourth.root.cpue70)),
-                      sex = 2) 
+snow_year <- brm(snow_year_formula,
+                   data = opilio.dat,
+                   family = bernoulli(link = "logit"),
+                   cores = 4, chains = 4, iter = 2500,
+                   save_pars = save_pars(all = TRUE),
+                   control = list(adapt_delta = 0.999, max_treedepth = 14))
 
-new.dat$year <- map_chr(str_split(new.dat$yr_ind, "_"), 1)
-new.dat$index <- map_chr(str_split(new.dat$yr_ind, "_"), 2)
-new.dat$station <- map_chr(str_split(new.dat$yr_ind, "_"), 3)
+#Save output
+saveRDS(snow_year, file = "./output/snow_year.rds")
+opilio_year <- readRDS("./output/snow_year.rds")
 
-posterior.predict <- posterior_epred(opiliofinal, newdata = new.dat)
+#MCMC convergence diagnostics 
+check_hmc_diagnostics(opilio_year$fit)
+neff_lowest(opilio_year$fit)
+rhat_highest(opilio_year$fit)
+summary(opilio_year)
+bayes_R2(opilio_year)
 
-opilio.estimate <- data.frame(species = "opilio",
-                              estimate = mean(posterior.predict),
-                              lower_95 = quantile(posterior.predict, probs = 0.025),
-                              upper_95 = quantile(posterior.predict, probs = 0.975),
-                              lower_90 = quantile(posterior.predict, probs = 0.05),
-                              upper_90 = quantile(posterior.predict, probs = 0.95),
-                              lower_80 = quantile(posterior.predict, probs = 0.1),
-                              upper_80 = quantile(posterior.predict, probs = 0.9))
+#Diagnostic Plots
+plot(opilio_year, ask = FALSE)
+plot(conditional_smooths(opilio_year), ask = FALSE)
+mcmc_plot(opilio_year, prob = 0.95)
+mcmc_plot(opilio_year, transformations = "inv_logit_scaled")
 
-ggplot(opilio.estimate) +
-  aes(x = species, y = estimate) +
-  geom_errorbar(aes(ymin = lower_95, ymax = upper_95), color = "grey80") +
-  geom_errorbar(aes(ymin = lower_90, ymax = upper_90), color = "grey60") +
-  geom_errorbar(aes(ymin = lower_80, ymax = upper_80), color = "black") +
-  geom_point(size = 3, color = "red3") +
-  theme_classic()
+#Conditional Effect 
+conditional_effects(opilio_year, effect = "year")
 
-ggsave("./figs/opilio estimate.png", width = 2, height = 2.5, units = 'in')
+ce1s_1 <- conditional_effects(opilio_year, effect = "year", re_formula = NA,
+                              probs = c(0.025, 0.975)) 
+ce1s_1$year %>%
+  dplyr::select(year, estimate__, lower__, upper__) %>%
+  mutate(species = "Snow crab") -> year_snow
 
+#Average marginal effect of year 
+years_ame <- opilio_year %>% 
+  emmeans(~ year,
+          var = "year",
+          epred = TRUE, re_formula = NA) %>% 
+  gather_emmeans_draws()
+
+years_ame %>%
+  median_hdi()
+
+ggplot(years_ame,aes(x = .value, fill=year)) +
+  stat_halfeye(slab_alpha = 0.75) +
+  labs(x = "Average marginal effect",
+       y = "Density") +
+  theme_bw()
 
 #######################################################################
 #Additional exploratory model runs for determine base model structure

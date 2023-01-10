@@ -9,6 +9,8 @@ library(lubridate)
 library(rstan)
 library(brms)
 library(bayesplot)
+library(marginaleffects)
+library(emmeans)
 library(MARSS)
 library(corrplot)
 library(factoextra)
@@ -27,7 +29,7 @@ source("./scripts/stan_utils.R")
 # load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
 
-# color palettes
+# load color palettes
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
 my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,5,7)]
 
@@ -121,7 +123,7 @@ ggsave("./figs/exog_variables.png")
 #Dimension reduction for depth/long/day using PCA
 pca.dat %>%
   ungroup() %>%
-  select(julian, longitude, depth) %>%
+  dplyr::select(julian, longitude, depth) %>%
   prcomp(scale = T, center = T) -> PCA
 
 get_eig(PCA)
@@ -136,7 +138,7 @@ PCA %>%
   mutate(covariate = case_when(column == "julian" ~ "Julian day",
                                column == "longitude" ~ "Longitude",
                                column == "depth" ~ "Depth")) %>%
-  select(-PC, -column) %>%
+  dplyr::select(-PC, -column) %>%
   ggplot(aes(covariate, value)) +
   geom_bar(stat='identity') +
   ylab("Loading") + xlab("") +
@@ -149,7 +151,7 @@ plot1 + plot2
 pca.dat$pc1 <- PCA$x[,1] 
 
 pc1 <- pca.dat %>%
-  select(station, year, pc1)
+  dplyr::select(station, year, pc1)
 
 tanner.dat <- left_join(tanner.dat, pc1) #Final dataset for modeling 
 
@@ -681,39 +683,10 @@ auc <- apply(preds, 1, function(x) {
 hist(auc) #Looks like our model discriminates fairly well 
 
 ################################
-#Plot predicted effects from best model
+#Extract and plot conditional effects of each predictor from best model
+  #conditioning on the mean for all other predictors, yr/site effects ignored 
 
-#Credible interval plot 
-as_draws_df(tannerfinal) %>%
-  select(starts_with("sds")) %>%
-  pivot_longer(everything()) %>%
-  group_by(name) %>%
-  median_qi(.width = seq(from = .5, to = .9, by = .1)) %>%
-  ggplot(aes(x = value, xmin = .lower, xmax = .upper, y = reorder(name, value))) +
-  geom_interval(aes(alpha = .width), color = "orange3") +
-  scale_alpha_continuous("CI width", range = c(.7, .15)) +
-  scale_y_discrete(labels = ggplot2:::parse_safe) +
-  xlim(0, NA) +
-  theme(axis.text.y = element_text(hjust = 0),
-        panel.grid.major.y = element_blank())
-
-#Size effect plot approach that doesn't work - add_predicted_draws needs all parameters? 
-tanner.dat %>%
-  data_grid(size = seq_range(size, n = 500), temperature = seq_range(temperature, n=500),
-            julian = seq_range(julian, n=500)) %>%
-  add_predicted_draws(tannerfinal) %>% #adding the posterior distribution 
-  ggplot(aes(x = size, y = pcr)) +  
-  stat_lineribbon(aes(y = .prediction), .width = c(.95, .9, .8),  #regression line and CI
-                  alpha = 0.5, colour = "black") +
-  geom_point(data = tanner.dat, colour = "darkseagreen4", size = 3) + #raw data
-  scale_fill_brewer(palette = "Greys") +
-    labs(x = "Carapace width (mm)", y = "Probability of infection") +
-  theme_bw() +
-  theme(legend.title = element_blank(),
-        legend.position = c(0.15, 0.85))
-
-
-#Size effect plot (method 2)
+#Size effect plot 
 #Need to save settings from conditional effects as an object to plot in ggplot
 ## 95% CI
 ce1s_1 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
@@ -801,96 +774,228 @@ sizeplot + dayplot + tempplot + plot_annotation(tag_levels = 'a')
 ggsave("./figs/tannerFig5.png")
   
 #####################################################
-#Predictions for final model 
+#Marginal Effects: instantaneous slope of one explanatory value with all 
+#other values held constant
 
-#Predict for size < 60mm
-new.dat <- tanner.dat %>%
-  dplyr::filter(size < 60)
+#Marginal effect at the mean: julian day slope
+tannerfinal %>%
+  emtrends(~ julian, 
+           var = "julian", 
+           regrid = "response")
+#on average, a one-day increase in Julian day is associated with a 1.1% increase in 
+#the probability of infection
 
-##Predict overall prevalence
+#Marginal effect at various levels of julian day  
+tannerfinal %>% 
+  emtrends(~ julian, var = "julian",
+           at = list(julian = 
+                  seq(min(tanner.dat$julian), 
+                      max(tanner.dat$julian), 1)),
+           re_formula = NA) %>%
+  as_tibble() %>%
+#and plot 
+ggplot(aes(x = julian, y = julian.trend)) +
+  geom_ribbon(aes(ymin = lower.HPD, ymax = upper.HPD), alpha = 0.1) +
+  geom_line(size = 1) +
+  scale_fill_brewer(palette = "Reds") +
+  labs(x = "Julian Day", y = "Marginal effect of julian day on probability of infection") +
+  theme_bw() 
 
-# first, create a combined year_index_station column to identify combinations that exist in the data
-tanner.dat$yr_ind_st <- paste(tanner.dat$year, tanner.dat$index, tanner.dat$station, sep = "_")
+#Marginal effect at the mean: size 
+tannerfinal %>%
+  emtrends(~ size, 
+           var = "size", 
+           regrid = "response", re_formula = NA)
+#a 1mm increase in Julian day is associated with a 1.1% increase in 
+#the probability of infection
+
+#Marginal effect at various size crab 
+tannerfinal %>% 
+  emtrends(~ size, var = "size",
+           at = list(size = 
+                       seq(min(tanner.dat$size), 
+                           max(tanner.dat$size), 1)),
+           re_formula = NA) %>%
+  as_tibble() %>%
+  #and plot 
+  ggplot(aes(x = size, y = size.trend)) +
+  geom_ribbon(aes(ymin = lower.HPD, ymax = upper.HPD), alpha = 0.1) +
+  geom_line(size = 1) +
+  scale_fill_brewer(palette = "Reds") +
+  labs(x = "Carapace width", y = "Marginal effect of size on probability of infection") +
+  theme_bw()  
+
+######################################################
+#Generating posterior predictions for final model 
+
+#global size mean-ignoring year/site specific deviations 
+grand_mean <- tannerfinal %>% 
+  #create dataset across a range of observed sizes sampled
+  epred_draws(newdata = expand_grid(size = range(tanner.dat$size),
+                                    temperature = mean(tanner.dat$temperature), 
+                                    julian = mean(tanner.dat$julian)), 
+              re_formula = NA) #ignoring random effects 
+#plot
+ggplot(grand_mean, aes(x = size, y = .epred)) +
+  stat_lineribbon() +
+  scale_fill_brewer(palette = "Reds") +
+  labs(x = "Carapace width", y = "Probability of infection",
+       fill = "Credible interval") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+#average marginal effect of size: i.e. finding the slope at different sizes 
+grand_mean_ame <- tannerfinal %>% 
+  emtrends(~ size,
+          var = "size",
+          at = list(julian = mean(tanner.dat$julian),
+                    temperature=mean(tanner.dat$temperature),
+                    size = c(30, 60, 90)),
+          epred = TRUE, re_formula = NA) %>% 
+  #get predicted values from posterior draws 
+  gather_emmeans_draws()
+
+ggplot(grand_mean_ame, aes(x = .value, fill = factor(size))) +
+  stat_halfeye(slab_alpha = 0.75) +
+  labs(x = "Average marginal effect of an increase in crab size",
+       y = "Density", fill = "Size") +
+  theme_bw() 
+#Sampling a 30mm crab is associated with a ~1% increase in prob of infection- 
+  #smaller the size, larger the marginal effect 
+
+#Average overall slope at mean size 
+tannerfinal %>% 
+  emtrends(~ 1,
+          var = "size",
+          epred = TRUE, re_formula = NA) 
+
+#####
+
+#Year-specific posterior predictions across size 
+all_years <- tannerfinal %>% 
+  epred_draws(newdata = expand_grid(size = range(tanner.dat$size),
+                                    temperature = mean(tanner.dat$temperature), 
+                                    julian = mean(tanner.dat$julian), 
+                                    year = levels(tanner.dat$year)), 
+              re_formula = ~ (1 | year)) #only predict using yr effects, not site too 
+
+ggplot(all_years, aes(x = size, y = .epred)) +
+  stat_lineribbon() +
+  scale_fill_brewer(palette = "Reds") +
+  labs(x = "Carapace width", y = "Probability of Infection",
+       fill = "Credible interval") +
+  facet_wrap(vars(year)) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+#average marginal effect by year
+all_years_ame <- tannerfinal %>% 
+  emtrends(~ size + year,
+           var = "size",
+           at = list(year = levels(tanner.dat$year)),
+           epred = TRUE, re_formula = ~ (1 | year)) %>% 
+  gather_emmeans_draws()
+
+ggplot(all_years_ame,aes(x = .value)) +
+  stat_halfeye(slab_alpha = 0.75) +
+  labs(x = "Average marginal effect of a\1-point increase in crab size",
+       y = "Density") +
+  facet_wrap(~year) +
+  theme_bw()
+
+#post and interval summaries of draws from size effect 
+all_years_ame %>% median_hdi()
+#Very little variation in size effect across years 
+
+#####
+#Lastly, to look at the effect of year on prob of infection, lets use best model
+  #with year as a fixed effect 
+
+## fit Tanner model
+tanner_year_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + year + (1 | index))
+
+tanner_year <- brm(tanner_year_formula,
+                   data = tanner.dat,
+                   family = bernoulli(link = "logit"),
+                   cores = 4, chains = 4, iter = 2500,
+                   save_pars = save_pars(all = TRUE),
+                   control = list(adapt_delta = 0.999, max_treedepth = 14))
+
+#Save output
+saveRDS(tanner_year, file = "./output/tanner_year.rds")
+tanner_year <- readRDS("./output/tanner_year.rds")
+
+#MCMC convergence diagnostics 
+check_hmc_diagnostics(tanner_year$fit)
+neff_lowest(tanner_year$fit)
+rhat_highest(tanner_year$fit)
+summary(tanner_year)
+bayes_R2(tanner_year)
+
+#Diagnostic Plots
+plot(tanner_year, ask = FALSE)
+plot(conditional_smooths(tanner_year), ask = FALSE)
+mcmc_plot(tanner_year, prob = 0.95)
+mcmc_plot(tanner_year, transformations = "inv_logit_scaled")
+mcmc_rhat(rhat(tanner_year)) #Potential scale reduction: All rhats < 1.1
+mcmc_acf(tanner_year, pars = c("b_Intercept", "bs_ssize_1", "bs_stemperature_1"), lags = 10) #Autocorrelation of selected parameters
+mcmc_neff(neff_ratio(tanner_year)) #Effective sample size: All ratios > 0.1
+marginal_effects(tanner_year, surface = TRUE) #visualize effects of predictors on the expected response
+marginal_smooths(tanner_year) #
+hypothesis(tanner_year, "ssize_1 < 0")
+
+#Conditional Effect 
+conditional_effects(tanner_year, effect = "year")
+
+ce1s_1 <- conditional_effects(tanner_year, effect = "year", re_formula = NA,
+                              probs = c(0.025, 0.975)) 
+ce1s_1$year %>%
+  dplyr::select(year, estimate__, lower__, upper__) %>%
+  mutate(species = "Tanner crab") -> year_tanner
+
+#Average marginal effect of year 
+years_ame <- tanner_year %>% 
+  emmeans(~ year,
+          var = "year",
+          epred = TRUE, re_formula = NA) %>% 
+  gather_emmeans_draws()
+
+ggplot(years_ame,aes(x = .value, fill=year)) +
+  stat_halfeye(slab_alpha = 0.75) +
+  labs(x = "Average marginal effect",
+       y = "Density") +
+  theme_bw()
+
+#Combine tanner/snow effects (run lines 862-902 in analyze_opilio.R first)
+year_tanner %>%
+  full_join(year_snow) %>%
+#Combined conditional effect plot 
+ggplot() +
+  geom_point(aes(year, estimate__, color=species), size=3) +
+  geom_errorbar(aes(year, ymin=lower__, ymax=upper__, color=species), width=0.3, size=0.5) +
+  ylab("Probability of infection") + xlab("") +
+  scale_colour_manual(values = my_colors) +
+  theme_bw() +
+  theme(legend.title= element_blank())
+  ggsave("./figs/yearFig7.png", height=3, width=4)
 
 
-new.dat <- data.frame(yr_ind_st = unique(tanner.dat$yr_ind),
-                      size = 30,
-                      pc1 = mean(unique(tanner.dat$pc1))
-                      )
 
-new.dat$year <- map_chr(str_split(new.dat$yr_ind_st, "_"), 1)
-new.dat$index <- map_chr(str_split(new.dat$yr_ind_st, "_"), 2)
 
-posterior.predict <- posterior_epred(tannerfinal, newdata = new.dat)
 
-tanner.estimate <- data.frame(species = "tanner",
-                              estimate = mean(posterior.predict),
-                              lower_95 = quantile(posterior.predict, probs = 0.025),
-                              upper_95 = quantile(posterior.predict, probs = 0.975),
-                              lower_90 = quantile(posterior.predict, probs = 0.05),
-                              upper_90 = quantile(posterior.predict, probs = 0.95),
-                              lower_80 = quantile(posterior.predict, probs = 0.1),
-                              upper_80 = quantile(posterior.predict, probs = 0.9))
 
-ggplot(tanner.estimate) +
-  aes(x = species, y = estimate) +
-  geom_errorbar(aes(ymin = lower_95, ymax = upper_95), color = "grey80") +
-  geom_errorbar(aes(ymin = lower_90, ymax = upper_90), color = "grey60") +
-  geom_errorbar(aes(ymin = lower_80, ymax = upper_80), color = "black") +
-  geom_point(size = 3, color = "red3") +
-  theme_classic()
 
-ggsave("./figs/tanner estimate.png", width = 2, height = 2.5, units = 'in')
 
-##################################
 
-#plot the posterior predictive distribution across the observed range of size
- 
-nd <-
-    tanner.dat %>% 
-    distinct(year, pcr, size) %>%
-    mutate(julian=163, temperature=2.3) #would need to take max(size) 
-  #should take weighted average julian day and avg temp 
-  
-  # compute and wrangle the posterior predictions
-  fitted(tannerfinal,
-         newdata = nd,
-         probs = c(.025, .975, .05, .95, .1, .9),
-         re_formula = NA) %>% 
-    data.frame() %>% 
-    bind_cols(nd)  %>% 
-    # plot
-    ggplot(aes(x = size)) +
-    # posterior predictions
-    geom_line(aes(y = Estimate)) +
-    geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), color="grey90", alpha=.1) + 
-    geom_ribbon(aes(ymin = Q5, ymax = Q95), color="grey85", alpha=.1) +
-    geom_ribbon(aes(ymin = Q10, ymax = Q90), color="grey80", alpha=.1) +
-    facet_wrap(~ year, nrow = 1) +
-    theme_bw()
-#Why are the estimates so small? 
-  
-#Adding predictions here?
-  nd <-
-    tanner.dat %>% 
-    distinct(year, index, temperature, pcr, size) %>%
-    mutate(julian=163, temperature=2.3) 
+
+
+
+
+
+
+
+
+
     
-    bind_cols(
-      fitted(tannerfinal, newdata = nd, 
-             probs = c(.025, .975, .05, .95, .1, .9),
-             re_formula = NA) %>% 
-        data.frame(),
-      predict(tannerfinal, newdata = nd) %>% 
-        data.frame()) %>% 
-    bind_cols(nd) %>% 
-      ggplot(aes(x = year)) +
-      # posterior predictions
-      geom_line(aes(y = Estimate...1)) +
-      geom_ribbon(aes(ymin = Q2.5, ymax = Q97.5), color="grey90", alpha=.1) + 
-      geom_ribbon(aes(ymin = Q5, ymax = Q95), color="grey85", alpha=.1) +
-      geom_ribbon(aes(ymin = Q10, ymax = Q90), color="grey80", alpha=.1) +
-      theme_bw()
-    
-   
+
    
