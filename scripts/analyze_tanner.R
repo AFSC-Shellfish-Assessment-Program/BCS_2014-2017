@@ -32,6 +32,7 @@ dat <- read.csv("./data/pcr_haul_master.csv")
 # load color palettes
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
 my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,5,7)]
+new_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,6)]
 
 ##################################
 #Functions 
@@ -682,6 +683,7 @@ auc <- apply(preds, 1, function(x) {
 })
 hist(auc) #Looks like our model discriminates fairly well 
 
+
 ################################
 #Extract and plot conditional effects of each predictor from best model
   #conditioning on the mean for all other predictors, yr/site effects ignored 
@@ -942,7 +944,7 @@ mcmc_acf(tanner_year, pars = c("b_Intercept", "bs_ssize_1", "bs_stemperature_1")
 mcmc_neff(neff_ratio(tanner_year)) #Effective sample size: All ratios > 0.1
 marginal_effects(tanner_year, surface = TRUE) #visualize effects of predictors on the expected response
 marginal_smooths(tanner_year) #
-hypothesis(tanner_year, "ssize_1 < 0")
+hypothesis(tanner_year, "year2016 < 0")
 
 #Conditional Effect 
 conditional_effects(tanner_year, effect = "year")
@@ -971,10 +973,12 @@ year_tanner %>%
   full_join(year_snow) %>%
 #Combined conditional effect plot 
 ggplot() +
-  geom_point(aes(year, estimate__, color=species), size=3) +
-  geom_errorbar(aes(year, ymin=lower__, ymax=upper__, color=species), width=0.3, size=0.5) +
+  geom_point(aes(year, estimate__, color=factor(species, 
+                                                levels = c("Tanner crab", "Snow crab"))), size=3) +
+  geom_errorbar(aes(year, ymin=lower__, ymax=upper__, color=factor(species, 
+                                levels = c("Tanner crab", "Snow crab"))), width=0.3, size=0.5) +
   ylab("Probability of infection") + xlab("") +
-  scale_colour_manual(values = my_colors) +
+  scale_colour_manual(values = new_colors) +
   theme_bw() +
   theme(legend.title= element_blank())
   ggsave("./figs/yearFig7.png", height=3, width=4)
