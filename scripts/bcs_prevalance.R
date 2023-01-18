@@ -78,6 +78,40 @@ prev_n %>%
   theme_bw() 
 ggsave("./figs/opilio_tanner_prev.png")
 
+#Prevelance plot by species/site/size version 2 
+#tanner
+tanner_colors <- RColorBrewer::brewer.pal(7, "GnBu")[2:4]
+
+prev_n %>%
+  filter(species_name=="Chionoecetes bairdi" &
+           index %in% c(1:3)) %>%
+  mutate(species = case_when(species_name == "Chionoecetes bairdi" ~ "Tanner crab")) %>%
+  ggplot(aes(x=year, y=Prevalance, fill=index)) +
+  geom_bar(stat = "identity", position = position_dodge(), alpha = 0.75) + 
+  scale_fill_manual(values = tanner_colors) +
+  geom_errorbar(aes(ymin=CI_lower, ymax=CI_upper), width=0.2, color="dark grey", position = position_dodge(width = .9)) + 
+  scale_y_continuous(limits = c(0,70)) +
+  labs(x="", y="Prevalance (%)", fill="Monitoring Site") +
+  theme_bw() -> tanner
+
+#snow
+snow_colors <- RColorBrewer::brewer.pal(7, "GnBu")[5:7]
+
+prev_n %>%
+  filter(species_name=="Chionoecetes opilio" &
+           index %in% c(4:6)) %>%
+  mutate(species = case_when(species_name == "Chionoecetes opilio" ~ "Snow crab")) %>%
+           ggplot(aes(x=year, y=Prevalance, fill=index)) +
+           geom_bar(stat = "identity", position = position_dodge(), alpha = 0.75) + 
+           scale_fill_manual(values = snow_colors) +
+           geom_errorbar(aes(ymin=CI_lower, ymax=CI_upper), width=0.2, color="dark grey", position = position_dodge(width = .9)) + 
+           scale_y_continuous(limits = c(0,70)) +
+           labs(x="", y="", fill="Monitoring Site") +
+           theme_bw() ->snow
+#Combine and save
+tanner + snow
+ggsave("./figs/opilio_tanner_prev2.png")
+
 #See explore_ scripts: these trends are hard to interpret as true disease
 #prevalence b/c same portion of the population was not sampled across years/sites 
 

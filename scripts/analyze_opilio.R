@@ -630,7 +630,7 @@ ce1s_1$sex %>%
 ggplot(aes(factor(sex, levels = c("Male", "Female")), estimate__)) +
   geom_point(size=3) +
   geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
-  ylab("Probability of infection") + xlab("") +
+  labs(y="Probability of infection", x="") +
   theme_bw() -> sexplot
 
 #Size
