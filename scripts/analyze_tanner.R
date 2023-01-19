@@ -103,7 +103,7 @@ pca.dat %>%
   rename("Depth (m)" = depth,
          "Longitude (W)" = longitude,
          "Bottom Temperature (C)" = temperature,
-         "Fourth root CPUE" = fourth.root.cpue70) %>%
+         "Tanner Crab Density (CPUE)" = fourth.root.cpue70) %>%
   pivot_longer(4:7, names_to = "variable", values_to = "data") %>% 
 ggplot(aes(julian, data)) +
   geom_point(aes(color = as.factor(year))) +

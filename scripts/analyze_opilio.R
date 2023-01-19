@@ -113,7 +113,7 @@ pca.dat.opilio %>%
   rename("Depth (m)" = depth,
          "Latitude (N)" = latitude,
          "Bottom Temperature (C)" = temperature,
-         "Fourth root CPUE" = fourth.root.cpue70) %>%
+         "Snow Crab Density (CPUE)" = fourth.root.cpue70) %>%
   pivot_longer(4:7, names_to = "variable", values_to = "data") %>% 
   ggplot(aes(julian, data)) +
   geom_point(aes(color = as.factor(year))) +
