@@ -32,7 +32,7 @@ dat <- read.csv("./data/pcr_haul_master.csv")
 # load color palettes
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
 my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,5,7)]
-new_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,6)]
+new_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(4,7)]
 
 ##################################
 #Functions 
@@ -909,7 +909,7 @@ ggplot(all_years_ame,aes(x = .value)) +
 all_years_ame %>% median_hdi()
 #Very little variation in size effect across years 
 
-#####
+############################
 #Lastly, to look at the effect of year on prob of infection, lets use best model
   #with year as a fixed effect 
 
