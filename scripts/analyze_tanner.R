@@ -32,7 +32,6 @@ dat <- read.csv("./data/pcr_haul_master.csv")
 # load color palettes
 cb <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") 
 my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,5,7)]
-new_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(4,7)]
 
 ##################################
 #Functions 
@@ -971,6 +970,8 @@ ggplot(years_ame,aes(x = .value, fill=year)) +
 #Combine tanner/snow effects (run lines 862-902 in analyze_opilio.R first)
 dodge <- position_dodge(width=0.5) #to offset datapoints on plot 
 
+new_colors <- c("#238b45","#2171b5")
+
 year_tanner %>%
   full_join(year_snow) %>%
 #Combined conditional effect plot 
@@ -986,7 +987,7 @@ ggplot() +
   theme_bw() +
   theme(panel.grid.major.x = element_blank()) +
   theme(legend.title= element_blank())
-  ggsave("./figs/yearFig7.png", height=3, width=4)
+  ggsave("./figs/yearFig7.png", dpi=300)
 
 
 

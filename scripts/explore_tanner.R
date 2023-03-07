@@ -11,6 +11,9 @@ library(lubridate)
 #load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
 
+#colors
+my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,7)]
+
 ###########################################################
 # data wrangling
 dat %>%
@@ -103,6 +106,24 @@ tanner.dat %>%
   theme_bw() +
   labs(x= "Tanner crab carapace width (mm)", y = "Count")
 ggsave("./figs/tanner_size.png", width=6.75)
+
+#Combined tanner/snow figure for Fig. S1 
+dat %>%
+  filter(index_site %in% c(1, 2, 3, 4, 5, 6),
+         year %in% c(2015:2017),
+         sex %in% c(1, 2),
+         pcr_result %in% c(1, 0)) %>%
+  mutate(Sex = recode_factor(sex, '1' = "M", '2' = "F"), 
+         species = recode_factor(species_name, "Chionoecetes bairdi" = "Tanner crab",
+                                      "Chionoecetes opilio" = "Snow crab")) %>%
+  group_by(species, year, index_site) %>%
+  ggplot() +
+  geom_density(aes(x=size, fill=Sex), position = "stack", alpha=.6) +
+  scale_fill_manual(values=my_colors) +
+  facet_grid(species~year) +
+  theme_bw() +
+  labs(x= "Carapace width (mm)", y = "Density")
+ggsave("./figs/Fig S1.png")
 
 #Size-frequency distribution of uninfected vrs infected
 tanner.dat %>%
