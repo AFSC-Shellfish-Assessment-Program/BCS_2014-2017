@@ -167,7 +167,8 @@ tanner.dat %>%
   group_by(year, index, station) %>%
   summarise(temperature = mean(temperature),
             depth = mean(depth),
-            julian = mean(julian)) -> plot 
+            julian = mean(julian),
+            cpue = mean(tanner70under_cpue)) -> plot 
 
 #Temperature
 ggplot(plot, aes(temperature)) +
@@ -178,6 +179,12 @@ ggplot(plot, aes(temperature)) +
 ggplot(plot, aes(depth)) +
   geom_histogram(bins = 12, fill = "dark grey", color = "black") +
   facet_grid(year ~ index)
+
+#CPUE
+ggplot(plot, aes(cpue)) +
+  geom_histogram(bins = 12, fill = "dark grey", color = "black") +
+  facet_grid(year ~ index)
+
 
 #Julian Day 
 ggplot(plot, aes(julian)) +
@@ -213,13 +220,13 @@ ggplot(plot3, aes(size, proportion.positive)) +
 #Temp-at-station vrs %positive plot 
 ggplot(plot3, aes(temperature, proportion.positive)) +
   geom_point() + 
-  facet_wrap(~year) +
+  #facet_wrap(~year) +
   geom_smooth(method = "gam")
 
 # <70mm CPUE-at-station vrs %positive plot 
 ggplot(plot3, aes(CPUE70, proportion.positive)) +
   geom_point() + 
-  facet_wrap(~year) +
+  #facet_wrap(~year) +
   geom_smooth(method = "gam")
 
 # Immature CPUE-at-station vrs %positive plot 
