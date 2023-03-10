@@ -8,6 +8,7 @@
 library(tidyverse)
 library(patchwork)
 library(ggthemes)
+library(lubridate)
 
 # load PCR data 
 dat <- read.csv("./data/pcr_haul_master.csv")
