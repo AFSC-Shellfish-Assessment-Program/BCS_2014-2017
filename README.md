@@ -1,4 +1,4 @@
-# Bitter crab disease dynamics in eastern Bering Sea Tanner and snow crab: detectability, prevalence, and drivers of infection 
+# Bitter crab disease dynamics in eastern Bering Sea Tanner and snow crab
 Authors: Erin J. Fedewa, Michael A. Litzow, Pamela C. Jensen, Leah S. Zacher, W. Christopher Long, Stan Kotwicki, Michael J. Malick, Hamish J. Small
 
 
