@@ -1,10 +1,9 @@
 # notes ----
+#Manuscript Objective 1:compare testing accuracy of diagnostic methods
 #Sensitivity and specificity analysis between PCR and visual diagnosis
 
 # Author: Erin Fedewa
 # last updated: 2023/1/3
-
-#Follow ups: add CI's for sensitivity and specificity 
 
 # load ----
 library(tidyverse)
@@ -48,8 +47,8 @@ dat %>%
   #99% probability of diagnosing visually neg when hemato is absent 
 
 ###############################################
-#Does specificity/sensitivity differ by crab size/seasonality? May need to follow up
-#on this approach, but for now, let's assess variation in sensitivity in subgroups of 
+#Does specificity/sensitivity differ by crab size/seasonality? 
+#let's assess variation in sensitivity in subgroups of 
 #the population (i.e. just using the median julian date/size to split data)
 
 dat %>%

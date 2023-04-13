@@ -1,5 +1,5 @@
 # notes ----
-#Testing preliminary GLMM models with tanner crab data
+#Testing preliminary GLMM models with tanner crab infection status/covariates
 
 # Author: Erin Fedewa
 # last updated: 2022/1/20

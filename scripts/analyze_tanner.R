@@ -1,7 +1,7 @@
 # notes ----
-#Analyze BCS infection dynamics in C. bairdi using Bayesian multivariate models
-#Investigate factors that may be important in driving disease occurrence 
-  #(host size/sex, depth, temperature, lat/long, immature crab density, date of sampling)
+#Objective 3: 
+#Investigate drivers of Hematodinium infection in tanner crab using Bayesian multivariate models  
+#(i.e. host size/sex, depth, temperature, lat/long, immature crab density, date of sampling)
 
 #load
 library(tidyverse)
@@ -770,9 +770,9 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
   labs(x = "Temperature (C)", y = "") +
   theme_bw() -> tempplot
 
-#Combine plots for Fig 5 of MS
+#Combine plots for Fig 6 of MS
 sizeplot + dayplot + tempplot + plot_annotation(tag_levels = 'a')
-ggsave("./figs/tannerFig5.png")
+ggsave("./figs/tannerFig6.png")
   
 #####################################################
 #Marginal Effects: instantaneous slope of one explanatory value with all 
@@ -908,8 +908,8 @@ ggplot(all_years_ame,aes(x = .value)) +
 all_years_ame %>% median_hdi()
 #Very little variation in size effect across years 
 
-############################
-#Lastly, to look at the effect of year on prob of infection, lets use best model
+############################################################
+#Lastly, to compare prob of infection amoung years, lets use best model
   #with year as a fixed effect 
 
 ## fit Tanner model
@@ -987,7 +987,7 @@ ggplot() +
   theme_bw() +
   theme(panel.grid.major.x = element_blank()) +
   theme(legend.title= element_blank())
-  ggsave("./figs/yearFig7.png", dpi=300)
+  ggsave("./figs/annual_brm.png", dpi=300)
 
 
 

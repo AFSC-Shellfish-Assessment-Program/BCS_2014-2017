@@ -1,5 +1,5 @@
 notes ----
-  #Testing preliminary GLM models with opilio crab data
+  #Testing preliminary GLM models with snow crab infection status/covariates
   
   # Author: Erin Fedewa
   # last updated: 2022/1/20

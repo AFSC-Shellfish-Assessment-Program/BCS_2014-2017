@@ -1,6 +1,6 @@
 # notes ----
-#Analyze BCS infection dynamics in C.opilio using Bayesian multivariate models 
-#Investigate factors that may be important in driving the probability of infection 
+#Objective 3: 
+#Investigate drivers of Hematodinium infection in snow crab using Bayesian multivariate models  
   #(i.e. host size/sex, depth, temperature, lat/long, immature crab density, date of sampling)
 
 #load
@@ -126,6 +126,7 @@ pca.dat.opilio %>%
   theme(legend.title = element_blank()) +
   theme(axis.title.y = element_blank()) +
   labs(x= "Day of Year") -> snow_plot
+#See analyze_tanner.R script to combine plots for Fig 2 of ms
 
 #Dimension reduction for temp/lat/day using PCA
 pca.dat.opilio %>%
@@ -741,13 +742,13 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
   labs(x = "Snow crab CPUE", y = "Probability of infection") +
   theme_bw() -> cpueplot
 
-#Combine plots for Fig 6 of MS
+#Combine plots for Fig 7 of MS
 (sexplot + sizeplot) / (dayplot + depthplot) / (cpueplot + plot_spacer()) +
   plot_annotation(tag_levels = 'a')
-ggsave("./figs/opilioFig6.png", height=9)
+ggsave("./figs/opilioFig7.png", height=9)
 
 ###################################
-#Marginal Effects: instantaneous slope of one explanatory value with all 
+#Extract Marginal Effects: instantaneous slope of one explanatory value with all 
   #other values held constant 
 
 #Marginal effect at the mean: julian day 
@@ -858,8 +859,8 @@ ggplot(all_years_ame,aes(x = .value)) +
 all_years_ame %>% median_hdi()
 #Probability of infection varies by year 
 
-#####
-#Lastly, to look at the effect of year on prob of infection, lets use best model
+###########################################################
+#Lastly, to compare annual probability of infection, lets use best model
 #with year as a fixed effect 
 
 ## fit snow model
@@ -963,165 +964,3 @@ plot(conditional_smooths(opilio2, effects = "pc1"), ask=FALSE)
 plot(conditional_smooths(opilio2.5, effects = "julian"), ask=FALSE)
 #Julian day smooths look very similar, i.e. We're not losing much by dropping temperature 
 
-##################################################
-#Additional model runs using station-level prevalence as a response (vrs. indv infection status)
-  #with hurdle models for zero-inflated 0% prevelance stations
-
-#data wrangling
-opilio.dat %>%
-  group_by(year, station, fourth.root.cpue70, julian, depth, sex, index) %>%
-  summarise(Prevalance = (sum(pcr)/n())*100,
-            avg_size = mean(size)) -> prev.dat
-
-#plot distribution of response
-prev.dat %>%
-  ggplot(aes(Prevalance)) +
-      geom_histogram() #lots of zeros! 
-
-#Hurdle model with prevalence as response 
-  #Hurdle model incorporates information about both zeros and non-zeros by:
-  #1) Using a logistic regression model that predicts if prevalence is 0 or not (hurdle)
-  #2) use a lognormal model for outcomes that are not zero 
-  #i.e. this means that any predictions using the posterior distribution will reflect zero processes 
-
-#Test with an intercept-only hurdle model first 
-hurdle1_formula <-  bf(
-                    #mu, mean part of formula
-                      Prevalance ~ s(avg_size, k = 4) + s(julian, k = 4) + (1 | year/index),
-                    #alpha, zero inflation part
-                       hu ~ 1) 
-
-hurdle1 <- brm(hurdle1_formula,
-                 data = prev.dat,
-                 family = hurdle_lognormal(),
-                 cores = 4, chains = 4, iter = 2500,
-                 save_pars = save_pars(all = TRUE),
-                 control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save output
-saveRDS(hurdle1, file = "./output/hurdle1.rds")
-hurdle1 <- readRDS("./output/hurdle1.rds")
-
-tidy(hurdle1)
-pp_check(hurdle1) #both zero and non zero processes incorporated into the posterior distribution
-
-hu_intercept <- tidy(hurdle1) %>% 
-  filter(term == "hu_(Intercept)") %>% 
-  pull(estimate)
-
-#Transform intercept to proportion (on logit scale as is)
-  #represents proportion of zeros in data (intercept)
-plogis(hu_intercept) #30.1%
-
-#Compare to dataset 
-prev.dat %>%
-  mutate(is_zero = Prevalance == 0) %>%
-  ungroup() %>%
- count(is_zero) %>%
-  mutate(prop = n/sum(n)) #Perfect!
-
-#Model 2 using our opilio.final model structure for both zero and non-zero processes
-
-hurdle2_formula <-  bf(
-  #mu, mean part of formula
-  Prevalance ~ s(avg_size, k = 4) + s(julian, k = 4) + + s(fourth.root.cpue70, k = 4) 
-  + sex + s(depth, k = 4) + (1 | year/index),
-  #alpha, zero inflation part
-  hu ~ s(avg_size, k = 4) + s(julian, k = 4) + + s(fourth.root.cpue70, k = 4) 
-  + sex + s(depth, k = 4) + (1 | year/index)) 
-
-
-hurdle2 <- brm(hurdle2_formula,
-               data = prev.dat,
-               family = hurdle_lognormal(),
-               cores = 4, chains = 4, iter = 2500,
-               save_pars = save_pars(all = TRUE),
-               control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save output
-saveRDS(hurdle2, file = "./output/hurdle2.rds")
-hurdle2 <- readRDS("./output/hurdle2.rds")
-
-#MCMC convergence diagnostics 
-check_hmc_diagnostics(hurdle2$fit)
-neff_lowest(hurdle2$fit)
-rhat_highest(hurdle2$fit)
-summary(hurdle2)
-bayes_R2(hurdle2)
-
-#Diagnostic Plots
-plot(hurdle2, ask = FALSE)
-plot(conditional_smooths(hurdle2), ask = FALSE)
-conditional_effects(hurdle2)
-mcmc_plot(hurdle2, type = "areas", prob = 0.95)
-mcmc_rhat(rhat(hurdle2)) #Potential scale reduction: All rhats < 1.1
-mcmc_acf(hurdle2, pars = c("b_Intercept", "bs_ssize_1", "bs_sfourth.root.cpue70_1"), lags = 10) #Autocorrelation of selected parameters
-mcmc_neff(neff_ratio(hurdle2)) #Effective sample size: All ratios > 0.1
-
-#Model #3 with year as a fixed effect to look at variation in prevalence across years 
-hurdle3_formula <-  bf(
-  #mu, mean part of formula
-  Prevalance ~ s(avg_size, k = 4) + s(julian, k = 4) + + s(fourth.root.cpue70, k = 4) 
-  + sex + s(depth, k = 4) + year + (1 | index),
-  #alpha, zero inflation part
-  hu ~ s(avg_size, k = 4) + s(julian, k = 4) + + s(fourth.root.cpue70, k = 4) 
-  + sex + s(depth, k = 4) + year + (1 | index)) 
-
-
-hurdle3 <- brm(hurdle3_formula,
-               data = prev.dat,
-               family = hurdle_lognormal(),
-               cores = 4, chains = 4, iter = 2500,
-               save_pars = save_pars(all = TRUE),
-               control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save output
-saveRDS(hurdle3, file = "./output/hurdle3.rds")
-hurdle3 <- readRDS("./output/hurdle3.rds")
-
-#MCMC convergence diagnostics 
-check_hmc_diagnostics(hurdle3$fit)
-neff_lowest(hurdle3$fit)
-rhat_highest(hurdle3$fit)
-summary(hurdle3)
-bayes_R2(hurdle3)
-
-#Diagnostic Plots
-plot(hurdle3, ask = FALSE)
-plot(conditional_smooths(hurdle3), ask = FALSE)
-conditional_effects(hurdle3)
-mcmc_plot(hurdle3, prob = 0.95)
-mcmc_plot(hurdle3, transformations = "inv_logit_scaled")
-
-#Conditional Effect 
-conditional_effects(hurdle3, effect = "year")
-
-ce1s_1 <- conditional_effects(hurdle3, effect = "year", re_formula = NA,
-                              probs = c(0.025, 0.975)) 
-ce1s_1$year %>%
-  dplyr::select(year, estimate__, lower__, upper__) %>%
-  mutate(species = "Snow crab") -> year_snow2
-
-#Average marginal effect of year 
-years_ame <- hurdle3 %>% 
-  emmeans(~ year,
-          var = "year",
-          epred = TRUE, re_formula = NA) %>% 
-  gather_emmeans_draws()
-
-years_ame %>%
-  median_hdi()
-
-ggplot(years_ame,aes(x = .value, fill=year)) +
-  stat_halfeye(slab_alpha = 0.75) +
-  labs(x = "Average marginal effect",
-       y = "Density") +
-  theme_bw()
-
-#Diagnostics and conditional effects plots look very similar to individual level models, as to be expected
-#We'll stop here given that this approach really doesn't add much more to the story....but if station-level
-#prevelence models did have better predictive capacity, this approach would be interesting, given that 
-#we'd be able to make predictions for prevelance at a spatial level (vrs. individual level)
-
-#Note: this blog is great for script on extracting and interpreting coefficients from a hurdle model:
-#https://www.andrewheiss.com/blog/2022/05/09/hurdle-lognormal-gaussian-brms/

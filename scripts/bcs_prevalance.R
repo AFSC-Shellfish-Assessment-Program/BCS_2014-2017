@@ -1,6 +1,6 @@
 # notes ----
-#Summary statistics on BCS prevalence across species/site/year
-
+#Objective 2: Baseline estimates of Hematodinium infection prevalence in EBS monitoring sites
+  
 # Author: Erin Fedewa
 # last updated: 2022/9/11
 
@@ -34,6 +34,13 @@ dat %>%
          index = as.factor(index),
          station = as.factor(station),
          depth = as.numeric(depth)) -> dat2
+
+#Size range of crab sampled by species
+dat2 %>%
+  group_by(species_name, year) %>%
+  summarise(Min_size = min(size, na.rm=T),
+            Max_size = max(size, na.rm=T),
+            Avg_size = mean(size, na.rm=T))
 
 #Calculate prevalence by year
 dat2 %>%
@@ -118,19 +125,11 @@ prev_n %>%
   theme(plot.title=element_text(hjust=0.5)) +
   theme(panel.grid.major = element_line()) -> snow
 
-#Combine and save
+#Combine and save figure
 tanner / snow
 ggsave("./figs/opilio_tanner_prev2.png",dpi=300)
 
-See explore_ scripts: these trends are hard to interpret as true disease
-#prevalence b/c same portion of the population was not sampled across years/sites 
 
-#Size range of crab sampled by species
-dat2 %>%
-  group_by(species_name, year) %>%
-  summarise(Min_size = min(size, na.rm=T),
-            Max_size = max(size, na.rm=T),
-            Avg_size = mean(size, na.rm=T))
 
 
 

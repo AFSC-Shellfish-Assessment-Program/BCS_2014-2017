@@ -1,4 +1,5 @@
 # notes ----
+#GOAL: Create "pcr_haul_master.csv" dataset for modeling/analyses
 #1) Add a column for maturity in PCR_2014_2017.csv using clutch codes/chela heights
      #Distribution based cutlines for males published in 2019 tech memo
 #2) Add in haul data (bottom temp, depth, lat/long, day sampled)
