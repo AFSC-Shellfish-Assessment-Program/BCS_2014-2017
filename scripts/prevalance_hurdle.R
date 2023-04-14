@@ -11,6 +11,9 @@ library(marginaleffects)
 library(emmeans)
 library(MARSS)
 library(corrplot)
+library(tidybayes)  
+library(broom)          
+library(broom.mixed) 
 source("./scripts/stan_utils.R")
 
 # load PCR data 
@@ -50,6 +53,17 @@ dat %>%
 prev.snow %>%
   ggplot(aes(Prevalance)) +
   geom_histogram() #lots of zeros! 
+#Hmmm..without the zeros, this distribution is not exponential, and we've got a good #
+  #of stations with 100% prevalence. With no hurdle_gaussian() (or an even better choice)
+  #family in brms though, we'll use a hurdled lognormal model. Not ideal, and may be 
+  #worth exploring a custom brms family 
+
+#Proportion of zeros in data
+prev.snow %>%
+  mutate(is_zero = Prevalance == 0) %>%
+  ungroup() %>%
+  count(is_zero) %>%
+  mutate(prop = n/sum(n)) #30.1%
 
 #Hurdle model with prevalence as response 
 #Hurdle model incorporates information about both zeros and non-zeros by:
@@ -62,7 +76,7 @@ hurdle1_formula <- bf(
   #mu, mean part of formula
   Prevalance ~ year,
   #alpha, zero inflation part
-  hu ~ 1) 
+  hu ~ year) 
 
 hurdle1_snow <- brm(hurdle1_formula,
                data = prev.snow,
@@ -79,21 +93,6 @@ tidy(hurdle1_snow)
 pp_check(hurdle1_snow) 
 #both zero and non zero processes incorporated into the posterior distribution
 
-hu_intercept <- tidy(hurdle1_snow) %>% 
-  filter(term == "hu_(Intercept)") %>% 
-  pull(estimate)
-
-#Transform intercept to proportion (on logit scale as is)
-#represents proportion of zeros in data (intercept)
-plogis(hu_intercept) #30.1%
-
-#Compare to dataset as check
-prev.snow %>%
-  mutate(is_zero = Prevalance == 0) %>%
-  ungroup() %>%
-  count(is_zero) %>%
-  mutate(prop = n/sum(n)) #Perfect!
-
 #MCMC convergence diagnostics 
 check_hmc_diagnostics(hurdle1_snow$fit)
 neff_lowest(hurdle1_snow$fit)
@@ -103,7 +102,7 @@ bayes_R2(hurdle1_snow)
 
 #Diagnostic Plots
 plot(hurdle1_snow, ask = FALSE)
-conditional_effects(hurdle1_snow)
+conditional_effects(hurdle1_snow) #default returns conditional means of both non-zero "mu" and zero "hu"
 mcmc_plot(hurdle1_snow, prob = 0.95)
 mcmc_plot(hurdle1_snow, transformations = "inv_logit_scaled")
 
@@ -131,6 +130,20 @@ ggplot(years_ame,aes(x = .value, fill=year)) +
   labs(x = "Average marginal effect",
        y = "Density") +
   theme_bw()
+
+#Marginal effects: effect of year in the hurdling process 
+
+#Combine hu_year term(s) with hurdle intercept and transform
+hurdle_intercept <- tidy(hurdle1_snow) %>% 
+  filter(term == "hu_(Intercept)") %>%  
+  pull(estimate)
+
+hurdle_lifeexp <- tidy(hurdle1_snow) %>%  
+  filter(term == "hu_year2017") %>%  
+  pull(estimate)
+
+plogis(hurdle_intercept + hurdle_lifeexp) - plogis(hurdle_intercept)
+#The probability of seeing 0% prevalence in 2017 decreased by 38% from 2015
 
 ##########################################
 #Additional more complex snow crab models (just exploratory...)
@@ -269,13 +282,22 @@ dat %>%
 prev.tanner %>%
   ggplot(aes(Prevalance)) +
   geom_histogram() #lots of zeros! 
+#Without the zeros, this looks fairly normal. With no hurdle_gaussian()
+  #family in brms though, we'll use a hurdled lognormal model again
+
+#Proportion of zeros in data
+prev.tanner %>%
+  mutate(is_zero = Prevalance == 0) %>%
+  ungroup() %>%
+  count(is_zero) %>%
+  mutate(prop = n/sum(n)) #47.2%
 
 #Hurdle Model 1: Ignoring spatial variability, year effect only (Obj 2 analysis)
 hurdle1_formula <- bf(
   #mu, mean part of formula
   Prevalance ~ year,
   #alpha, zero inflation part
-  hu ~ 1) 
+  hu ~ year) 
 
 hurdle1_tanner <- brm(hurdle1_formula,
                     data = prev.tanner,
@@ -291,21 +313,6 @@ hurdle1_tanner <- readRDS("./output/hurdle1_tanner.rds")
 tidy(hurdle1_tanner)
 pp_check(hurdle1_tanner) 
 #both zero and non zero processes incorporated into the posterior distribution
-
-hu_intercept <- tidy(hurdle1_tanner) %>% 
-  filter(term == "hu_(Intercept)") %>% 
-  pull(estimate)
-
-#Transform intercept to proportion (on logit scale as is)
-#represents proportion of zeros in data (intercept)
-plogis(hu_intercept) #47.2%
-
-#Compare to dataset as check
-prev.tanner %>%
-  mutate(is_zero = Prevalance == 0) %>%
-  ungroup() %>%
-  count(is_zero) %>%
-  mutate(prop = n/sum(n)) #Perfect!
 
 #MCMC convergence diagnostics 
 check_hmc_diagnostics(hurdle1_tanner$fit)
@@ -328,22 +335,6 @@ ce1s_1 <- conditional_effects(hurdle1_tanner, effect = "year", re_formula = NA,
 ce1s_1$year %>%
   dplyr::select(year, estimate__, lower__, upper__) %>%
   mutate(species = "Tanner crab") -> year_tanner
-
-#Average marginal effect of year 
-years_ame <- hurdle1_tanner %>% 
-  emmeans(~ year,
-          var = "year",
-          epred = TRUE, re_formula = NA) %>% 
-  gather_emmeans_draws()
-
-years_ame %>%
-  median_hdi()
-
-ggplot(years_ame,aes(x = .value, fill=year)) +
-  stat_halfeye(slab_alpha = 0.75) +
-  labs(x = "Average marginal effect",
-       y = "Density") +
-  theme_bw()
 
 ######################################
 #Combine snow and tanner plots for Fig 5 in ms 
