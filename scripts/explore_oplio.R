@@ -87,6 +87,17 @@ ggplot(plot2, aes(fill=name, y=value, x=year)) +
   geom_bar(position="stack", stat="identity") +
   facet_grid(~ index)
 
+#Sample sizes by maturity
+dat %>%
+  #filter(maturity != "NA") %>%
+  group_by(year,maturity) %>%
+  count() %>%
+  ggplot() +
+  geom_bar(aes(x=as.factor(maturity), y= n), stat='identity') +
+  facet_wrap(~year) +
+  theme_bw() +
+  labs(x= "Maturity Status", y = "Sample size") #lots of missing maturity info in 14/15
+
 #Size range sampled across years
 opilio.dat %>% 
   summarize(avg_cw = mean(size, na.rm=T), 

@@ -67,7 +67,7 @@ tanner.dat %>%
 ###############################################
 #Data exploration
 
-nrow(tanner.dat) # 1285 samples!
+nrow(tanner.dat) # 1285 tanner samples
 
 #Sample sizes
 tanner.dat %>%
@@ -75,6 +75,12 @@ tanner.dat %>%
   count() %>%
   print(n=100) #Only one crab sampled at  some stations so attributing
 #variance to station level will be difficult 
+
+#total sample size of uncertain diagnosis
+dat %>%
+ filter(pcr_result == 3,
+        year %in% c(2015:2017)) %>%
+  count() #220 out of 2814 samples 
 
 # BCS+/- occurrence by index/year
 tanner.dat %>%
@@ -88,6 +94,42 @@ tanner.dat %>%
 ggplot(plot2, aes(fill=name, y=value, x=year)) +
   geom_bar(position="stack", stat="identity") +
   facet_grid(~ index)
+
+#Sample sizes by maturity
+dat %>%
+  #filter(maturity != "NA") %>%
+  group_by(year,maturity) %>%
+  count() %>%
+  ggplot() +
+  geom_bar(aes(x=as.factor(maturity), y= n), stat='identity') +
+  facet_wrap(~year) +
+  theme_bw() +
+  labs(x= "Maturity Status", y = "Sample size") #lots of missing maturity info in 14/15
+
+#Sample sizes by maturity/sex
+dat %>%
+  filter(sex != "NA") %>%
+  group_by(year,maturity, sex) %>%
+  count() %>%
+  ggplot() +
+  geom_bar(aes(x=as.factor(maturity), y= n), stat='identity') +
+  facet_grid(sex~year) +
+  theme_bw() +
+  labs(x= "Maturity Status", y = "Sample size") 
+
+#Sample sizes by shell condition/sex
+dat %>%
+  filter(sex != "NA") %>%
+  filter(shell_cond != "NA") %>%
+  group_by(year,shell_cond, sex) %>%
+  count() %>%
+  ggplot() +
+  geom_bar(aes(x=as.factor(shell_cond), y= n), stat='identity') +
+  facet_grid(sex~year) +
+  theme_bw() +
+  labs(x= "Shell Condition", y = "Sample size")
+#We're missing maturity info, but prevalence of old shell 3 & 4 crab suggests that 
+  #collections were not targeting immature crab only 
 
 #Size range sampled across years
 tanner.dat %>% 
@@ -122,6 +164,7 @@ dat %>%
   scale_fill_manual(values=my_colors) +
   facet_grid(species~year) +
   theme_bw() +
+  xlim(0, NA) +
   labs(x= "Carapace width (mm)", y = "Density")
 ggsave("./figs/Fig S1.png")
 

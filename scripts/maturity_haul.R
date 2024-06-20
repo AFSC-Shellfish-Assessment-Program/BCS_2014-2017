@@ -25,19 +25,20 @@ pcr_master %>%
                               (Sex == 2 & Clutch == 0) ~ 0,
                               (grepl("opilio", Species_Name) & Sex == 1 & (log(Chela) < -2.20640 + 1.13523 * log(Size)))| (grepl("opilio", Species_Name) & Sex == 1 & Size < 50) ~ 0,
                               (grepl("bairdi", Species_Name) & Sex == 1 & (log(Chela) < -2.67411 + 1.18884 * log(Size)))| (grepl("bairdi", Species_Name) & Sex == 1 & Size < 60) ~ 0, 
-                              (grepl("opilio", Species_Name) & Sex == 1 & (log(Chela) > -2.20640 + 1.13523 * log(Size))) ~ 1,
-                              (grepl("bairdi", Species_Name) & Sex == 1 & (log(Chela) > -2.67411 + 1.18884  * log(Size))) ~ 1)) %>%
+                              (grepl("opilio", Species_Name) & Sex == 1 & (log(Chela) >= -2.20640 + 1.13523 * log(Size))) ~ 1,
+                              (grepl("bairdi", Species_Name) & Sex == 1 & (log(Chela) >= -2.67411 + 1.18884  * log(Size))) ~ 1)) %>%
   select(-X) -> pcr_mat
 
 #############################
 #Append EBS haul data 
-tanner_haul <- read.csv("./data/haul_tanner.csv")
-snow_haul <- read.csv("./data/haul_opilio.csv", skip=5)
+tanner_haul <- read.csv("./data/haul_bairdi.csv")
+snow_haul <- read.csv("./data/haul_opilio.csv")
 
 #Combine Tanner and snow haul files 
 tanner_haul %>%
   bind_rows(snow_haul) %>% 
-  filter(AKFIN_SURVEY_YEAR %in% c(2014, 2015, 2016, 2017),
+  mutate(YEAR = as.numeric(str_extract(CRUISE, "\\d{4}"))) %>%
+  filter(YEAR %in% c(2014, 2015, 2016, 2017),
          HAUL_TYPE==3) %>%
   select(VESSEL, CRUISE, START_DATE, HAUL, MID_LATITUDE, MID_LONGITUDE,GIS_STATION,
          BOTTOM_DEPTH,GEAR_TEMPERATURE) %>%
@@ -57,28 +58,29 @@ pcr_mat %>%
 
 #tanner crab
 tanner_haul %>%
-  filter(AKFIN_SURVEY_YEAR %in% c(2014, 2015, 2016, 2017),
+  mutate(YEAR = as.numeric(str_extract(CRUISE, "\\d{4}"))) %>%
+  filter(YEAR %in% c(2014, 2015, 2016, 2017),
          HAUL_TYPE==3) %>%
   rename_with(tolower) %>%
-  group_by(akfin_survey_year, gis_station, area_swept) %>% 
-  summarise(tanner_cpue = sum(sampling_factor[species_name == "Bairdi Tanner Crab"], na.rm = T) / mean(area_swept),
-            tanner70under_cpue = sum(sampling_factor[species_name == "Bairdi Tanner Crab" & width  <= 70], na.rm = T) / mean(area_swept),
-            tannerimm_cpue = sum(sampling_factor[species_name == "Bairdi Tanner Crab" & width  <= 112 & sex==1 |
-                                                 species_name == "Bairdi Tanner Crab" & width <=84 & sex==2], na.rm = T) / mean(area_swept)) %>%
-  right_join(mat_haul, by = c("akfin_survey_year"="year", "gis_station"="stationid")) -> tanner_cpue
+  group_by(year, gis_station, area_swept) %>% 
+  summarise(tanner_cpue = sum(sampling_factor[species_code == 68560], na.rm = T) / mean(area_swept),
+            tanner70under_cpue = sum(sampling_factor[species_code == 68560 & width  <= 70], na.rm = T) / mean(area_swept),
+            tannerimm_cpue = sum(sampling_factor[species_code == 68560 & width  <= 112 & sex==1 |
+                                                   species_code == 68560 & width <=84 & sex==2], na.rm = T) / mean(area_swept)) %>%
+  right_join(mat_haul, by = c("year"="year", "gis_station"="stationid")) -> tanner_cpue
 
 #snow crab
 snow_haul %>%
-  filter(AKFIN_SURVEY_YEAR %in% c(2014, 2015, 2016, 2017),
+  mutate(YEAR = as.numeric(str_extract(CRUISE, "\\d{4}"))) %>%
+  filter(YEAR %in% c(2014, 2015, 2016, 2017),
          HAUL_TYPE==3) %>%
   rename_with(tolower) %>%
-  group_by(akfin_survey_year, gis_station, area_swept) %>% 
-  summarise(snow_cpue = sum(sampling_factor[species_name == "Opilio Crab"], na.rm = T) / mean(area_swept),
-            snow70under_cpue = sum(sampling_factor[species_name == "Opilio Crab" & width  <= 70], na.rm = T) / mean(area_swept), 
-            snowimm_cpue = sum(sampling_factor[species_name == "Opilio Crab" & width  <= 94 & sex==1 |
-                                                 species_name == "Opilio Crab" & width <=50 & sex==2], na.rm = T) / mean(area_swept))                                                                                  %>%
-  right_join(tanner_cpue, by = c("akfin_survey_year", "gis_station")) %>%
-  rename(year = akfin_survey_year) %>%
+  group_by(year, gis_station, area_swept) %>% 
+  summarise(snow_cpue = sum(sampling_factor[species_code == 68580], na.rm = T) / mean(area_swept),
+            snow70under_cpue = sum(sampling_factor[species_code == 68580 & width  <= 70], na.rm = T) / mean(area_swept), 
+            snowimm_cpue = sum(sampling_factor[species_code == 68580 & width  <= 94 & sex==1 |
+                                                 species_code == 68580 & width <=50 & sex==2], na.rm = T) / mean(area_swept))                                                                                 %>%
+  right_join(tanner_cpue, by = c("year", "gis_station")) %>%
   select(-area_swept.x, -area_swept.y) -> cpue
 
 ##################################################
