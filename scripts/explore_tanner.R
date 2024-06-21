@@ -14,8 +14,72 @@ dat <- read.csv("./data/pcr_haul_master.csv")
 #colors
 my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,7)]
 
+##########################################################
+#Quick data exploration with full snow/tanner dataset
+
+#Sample sizes by maturity
+dat %>%
+  #filter(maturity != "NA") %>%
+  group_by(year,maturity) %>%
+  count() %>%
+  ggplot() +
+  geom_bar(aes(x=as.factor(maturity), y= n), stat='identity') +
+  facet_wrap(~year) +
+  theme_bw() +
+  labs(x= "Maturity Status", y = "Sample size") #lots of missing maturity info in 14/15
+
+#Sample sizes by maturity/sex
+dat %>%
+  filter(sex != "NA") %>%
+  group_by(year,maturity, sex) %>%
+  count() %>%
+  ggplot() +
+  geom_bar(aes(x=as.factor(maturity), y= n), stat='identity') +
+  facet_grid(sex~year) +
+  theme_bw() +
+  labs(x= "Maturity Status", y = "Sample size") 
+
+#Sample sizes by shell condition/sex
+dat %>%
+  filter(sex != "NA") %>%
+  filter(shell_cond != "NA") %>%
+  group_by(year,shell_cond, sex) %>%
+  count() %>%
+  ggplot() +
+  geom_bar(aes(x=as.factor(shell_cond), y= n), stat='identity') +
+  facet_grid(sex~year) +
+  theme_bw() +
+  labs(x= "Shell Condition", y = "Sample size")
+#We're missing maturity info, but prevalence of old shell 3 & 4 crab suggests that 
+#collections were not targeting immature crab only 
+
+#total sample size of uncertain diagnosis
+dat %>%
+  filter(pcr_result == 3,
+         year %in% c(2015:2017)) %>%
+  count() #220 out of 2814 samples 
+
+#map of spatial sampling effort 
+ 
+#Basemaps
+usa <- raster::getData("GADM", country = c("USA"), level = 1, path = "./data")
+can <- raster::getData("GADM", country = c("CAN"), level = 1, path = "./data")
+
+#Sample size by year map
+dat %>% 
+  group_by(year, mid_latitude, mid_longitude, species_name) %>%
+  summarise(n_crab=n()) %>%
+  ggplot() + 
+  geom_polygon(data = usa, aes(x = long, y = lat, group = group))+
+  geom_point(aes(x = mid_longitude, y = mid_latitude, color = species_name)) +
+  coord_quickmap(xlim = c(-179, -158), ylim = c(53, 66)) +
+  theme_bw() +
+  facet_wrap(~year) +
+  labs(y="", x="")
+ggsave("./figs/n_year.png", dpi=300)
+
 ###########################################################
-# data wrangling
+# data wrangling for tanners only 
 dat %>%
   mutate(julian=yday(parse_date_time(start_date, "mdy", "US/Alaska"))) %>%  #add julian date 
   filter(species_name == "Chionoecetes bairdi",
@@ -76,12 +140,6 @@ tanner.dat %>%
   print(n=100) #Only one crab sampled at  some stations so attributing
 #variance to station level will be difficult 
 
-#total sample size of uncertain diagnosis
-dat %>%
- filter(pcr_result == 3,
-        year %in% c(2015:2017)) %>%
-  count() #220 out of 2814 samples 
-
 # BCS+/- occurrence by index/year
 tanner.dat %>%
   select(year, index, pcr) %>%
@@ -95,41 +153,6 @@ ggplot(plot2, aes(fill=name, y=value, x=year)) +
   geom_bar(position="stack", stat="identity") +
   facet_grid(~ index)
 
-#Sample sizes by maturity
-dat %>%
-  #filter(maturity != "NA") %>%
-  group_by(year,maturity) %>%
-  count() %>%
-  ggplot() +
-  geom_bar(aes(x=as.factor(maturity), y= n), stat='identity') +
-  facet_wrap(~year) +
-  theme_bw() +
-  labs(x= "Maturity Status", y = "Sample size") #lots of missing maturity info in 14/15
-
-#Sample sizes by maturity/sex
-dat %>%
-  filter(sex != "NA") %>%
-  group_by(year,maturity, sex) %>%
-  count() %>%
-  ggplot() +
-  geom_bar(aes(x=as.factor(maturity), y= n), stat='identity') +
-  facet_grid(sex~year) +
-  theme_bw() +
-  labs(x= "Maturity Status", y = "Sample size") 
-
-#Sample sizes by shell condition/sex
-dat %>%
-  filter(sex != "NA") %>%
-  filter(shell_cond != "NA") %>%
-  group_by(year,shell_cond, sex) %>%
-  count() %>%
-  ggplot() +
-  geom_bar(aes(x=as.factor(shell_cond), y= n), stat='identity') +
-  facet_grid(sex~year) +
-  theme_bw() +
-  labs(x= "Shell Condition", y = "Sample size")
-#We're missing maturity info, but prevalence of old shell 3 & 4 crab suggests that 
-  #collections were not targeting immature crab only 
 
 #Size range sampled across years
 tanner.dat %>% 
