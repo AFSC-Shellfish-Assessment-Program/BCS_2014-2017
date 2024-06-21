@@ -4,7 +4,7 @@ Data and analyses for "Bitter crab disease dynamics in eastern Bering Sea Tanner
 # Project Objectives:
 1) Evaluate testing accuracy of disease detection methods
 2) Estimate bitter crab disease prevalence from 2015 – 2017 in eastern Bering Sea monitoring sites
-3) identify factors influencing Hematodinium spp. infection probability 
+3) Identify factors influencing Hematodinium spp. infection probability 
 
 # METADATA:
 ================================================
@@ -43,7 +43,7 @@ Coverage
 
 Attributes
 ----------
-One master datasets has been produced for further modeling via the "maturity_haul" script. "pcr_haul_master.csv" includes all crab biometric, disease diagnosis and haul level data, with data attributes listed below. 
+One master dataset has been produced for further modeling via the "maturity_haul" script. "pcr_haul_master.csv" includes all crab biometric, disease diagnosis and haul level data, with data attributes listed below. 
 
 | Name    |    Description   |   Unit    |
 | ------- | ---------------- | ---------- |
@@ -72,7 +72,7 @@ One master datasets has been produced for further modeling via the "maturity_hau
 |  `dna_plate_no` | Plate number containing hemolymph sample   |  numeric
 |  `dna_well_no` | Individual well plate number containing hemolymph sample   |  alpha-numeric
 |  `preservative` | Method of preservation for tissue/blood sample   |  text
-|  `sample_status| Disposition of tissue/blood sample   |  text
+|  `sample_status` | Disposition of tissue/blood sample   |  text
 |  `c_v_h` | Combined string with cruise, vessel and haul for collections   |  numeric 
 |  `cruise` | Cruise ID for Bering Sea/GOA/Atlantic bottom trawl surveys. See RACEBASE or AKFIN for additional NOAA cruise metadata   |  numeric
 |  `vessel`  |     ID number of the vessel used to collect data for that haul associated with vessel name    |   numeric
