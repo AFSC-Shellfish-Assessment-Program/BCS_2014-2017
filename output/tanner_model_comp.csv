@@ -1,5 +1,5 @@
 "","formula","elpd_diff","se_diff"
 "tanner3","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + (1 | year/index)",0,0
-"tanner5","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index)",-0.608021820817784,0.518945923156461
-"tanner4","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + sex + (1 | year/index)",-0.650789393958821,1.41664805513854
-"tanner2","pcr ~ s(size, k = 4) + s(julian, k = 4) + (1 | year/index)",-1.11641276967725,1.62350895522293
+"tanner4","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + s(fourth.root.cpue70, k = 4) + (1 | year/index)",-0.540883983448756,1.400302994507
+"tanner5","pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + sex + (1 | year/index)",-0.854263328424633,0.508614590095251
+"tanner2","pcr ~ s(size, k = 4) + s(julian, k = 4) + (1 | year/index)",-1.13280643847939,1.60852996815021

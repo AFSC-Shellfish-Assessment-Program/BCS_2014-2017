@@ -1,5 +1,7 @@
-# notes ----
 #Objective 2: Annual Hematodinium prevalence estimated via zero-inflated hurdle models 
+
+#This approach was NOT used b/c the log-normal component does not account for upper bound
+  #of prevalence response (1, aka 100%) - see prevalance_binomial.R script for preferred method 
 
 #load
 library(tidyverse)
@@ -91,7 +93,12 @@ hurdle1_snow <- readRDS("./output/hurdle1_snow.rds")
 
 tidy(hurdle1_snow)
 pp_check(hurdle1_snow) 
-#both zero and non zero processes incorporated into the posterior distribution
+#both zero and non zero processes incorporated into the posterior distribution, BUT
+  #our predictions can't exceed 100, and the model isn't capturing the bump in prevelance 
+  #at the upper boundary (100)
+
+#This model is NOT appropriate for our dataset, but we'll continue on purely as 
+  #a learning exercise :) 
 
 #MCMC convergence diagnostics 
 check_hmc_diagnostics(hurdle1_snow$fit)
@@ -145,108 +152,7 @@ hurdle_lifeexp <- tidy(hurdle1_snow) %>%
 plogis(hurdle_intercept + hurdle_lifeexp) - plogis(hurdle_intercept)
 #The probability of seeing 0% prevalence in 2017 decreased by 38% from 2015
 
-##########################################
-#Additional more complex snow crab models (just exploratory...)
 
-#Model 2 using our opilio.final model structure for both zero and non-zero processes
-
-hurdle2_formula <-  bf(
-  #mu, mean part of formula
-  Prevalance ~ s(avg_size, k = 4) + s(julian, k = 4) + + s(fourth.root.cpue70, k = 4) 
-  + sex + s(depth, k = 4) + (1 | year/index),
-  #alpha, zero inflation part
-  hu ~ s(avg_size, k = 4) + s(julian, k = 4) + + s(fourth.root.cpue70, k = 4) 
-  + sex + s(depth, k = 4) + (1 | year/index)) 
-
-
-hurdle2 <- brm(hurdle2_formula,
-               data = prev.dat,
-               family = hurdle_lognormal(),
-               cores = 4, chains = 4, iter = 2500,
-               save_pars = save_pars(all = TRUE),
-               control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save output
-saveRDS(hurdle2, file = "./output/hurdle2.rds")
-hurdle2 <- readRDS("./output/hurdle2.rds")
-
-#MCMC convergence diagnostics 
-check_hmc_diagnostics(hurdle2$fit)
-neff_lowest(hurdle2$fit)
-rhat_highest(hurdle2$fit)
-summary(hurdle2)
-bayes_R2(hurdle2)
-
-#Diagnostic Plots
-plot(hurdle2, ask = FALSE)
-plot(conditional_smooths(hurdle2), ask = FALSE)
-conditional_effects(hurdle2)
-mcmc_plot(hurdle2, type = "areas", prob = 0.95)
-mcmc_rhat(rhat(hurdle2)) #Potential scale reduction: All rhats < 1.1
-mcmc_acf(hurdle2, pars = c("b_Intercept", "bs_ssize_1", "bs_sfourth.root.cpue70_1"), lags = 10) #Autocorrelation of selected parameters
-mcmc_neff(neff_ratio(hurdle2)) #Effective sample size: All ratios > 0.1
-
-#Model #3 with year as a fixed effect to look at variation in prevalence across years 
-hurdle3_formula <-  bf(
-  #mu, mean part of formula
-  Prevalance ~ s(avg_size, k = 4) + s(julian, k = 4) + + s(fourth.root.cpue70, k = 4) 
-  + sex + s(depth, k = 4) + year + (1 | index),
-  #alpha, zero inflation part
-  hu ~ s(avg_size, k = 4) + s(julian, k = 4) + + s(fourth.root.cpue70, k = 4) 
-  + sex + s(depth, k = 4) + year + (1 | index)) 
-
-
-hurdle3 <- brm(hurdle3_formula,
-               data = prev.dat,
-               family = hurdle_lognormal(),
-               cores = 4, chains = 4, iter = 2500,
-               save_pars = save_pars(all = TRUE),
-               control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save output
-saveRDS(hurdle3, file = "./output/hurdle3.rds")
-hurdle3 <- readRDS("./output/hurdle3.rds")
-
-#MCMC convergence diagnostics 
-check_hmc_diagnostics(hurdle3$fit)
-neff_lowest(hurdle3$fit)
-rhat_highest(hurdle3$fit)
-summary(hurdle3)
-bayes_R2(hurdle3)
-
-#Diagnostic Plots
-plot(hurdle3, ask = FALSE)
-plot(conditional_smooths(hurdle3), ask = FALSE)
-conditional_effects(hurdle3)
-mcmc_plot(hurdle3, prob = 0.95)
-mcmc_plot(hurdle3, transformations = "inv_logit_scaled")
-
-#Conditional Effect 
-conditional_effects(hurdle3, effect = "year")
-
-ce1s_1 <- conditional_effects(hurdle3, effect = "year", re_formula = NA,
-                              probs = c(0.025, 0.975)) 
-ce1s_1$year %>%
-  dplyr::select(year, estimate__, lower__, upper__) %>%
-  mutate(species = "Snow crab") -> year_snow2
-
-#Average marginal effect of year 
-years_ame <- hurdle3 %>% 
-  emmeans(~ year,
-          var = "year",
-          epred = TRUE, re_formula = NA) %>% 
-  gather_emmeans_draws()
-
-years_ame %>%
-  median_hdi()
-
-ggplot(years_ame,aes(x = .value, fill=year)) +
-  stat_halfeye(slab_alpha = 0.75) +
-  labs(x = "Average marginal effect",
-       y = "Density") +
-  theme_bw()
-
-#Diagnostics and conditional effects plots look very similar to individual level models, as to be expected
 #Note: this blog is great for script on extracting and interpreting coefficients from a hurdle model:
 #https://www.andrewheiss.com/blog/2022/05/09/hurdle-lognormal-gaussian-brms/
 

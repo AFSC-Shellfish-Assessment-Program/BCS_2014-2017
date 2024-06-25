@@ -147,7 +147,7 @@ PCA %>%
 #Figure S1b for MS
 plot1 + plot2
 
-#Extract pc1 for model runs and join to opilio dataset
+#Extract pc1 for model runs and join to tanner dataset
 pca.dat$pc1 <- PCA$x[,1] 
 
 pc1 <- pca.dat %>%
@@ -168,7 +168,8 @@ get_prior(tanner1_formula, tanner.dat, family = bernoulli(link = "logit"))
 tanner1 <- brm(tanner1_formula,
                          data = tanner.dat,
                          family = bernoulli(link = "logit"),
-                         cores = 4, chains = 4, iter = 2500,
+                         cores = 4, chains = 4, 
+                         warmup = 1500, iter = 6000,
                          save_pars = save_pars(all = TRUE),
                          control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -238,7 +239,8 @@ tanner2_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + (1 | year/index
 tanner2 <- brm(tanner2_formula,
                data = tanner.dat,
                family = bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500,
+               cores = 4, chains = 4, 
+               warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -298,7 +300,7 @@ loo(tanner1, tanner2, moment_match = TRUE)
 conditional_smooths(tanner1, effects = "pc1")
 conditional_smooths(tanner2, effects = "julian") #Very similar smooths- depth and long not adding much
 
-#Although tanner1 has better predictive capacity, let's move
+#Although tanner1 has slightly better predictive capacity, let's move
   #forward with julian day to capture seasonal progression for ease of interpretation and consistency 
   #with snow crab base model structure (julian day and pc1 effects very similar)
 
@@ -310,7 +312,8 @@ tanner3_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) +  s(temperature,
 tanner3 <- brm(tanner3_formula,
                data = tanner.dat,
                family = bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500,
+               cores = 4, chains = 4, 
+               warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -374,7 +377,8 @@ tanner4_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) +  s(temperature,
 tanner4 <- brm(tanner4_formula,
                data = tanner.dat,
                family = bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500,
+               cores = 4, chains = 4, 
+               warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -438,7 +442,8 @@ tanner5_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) +  s(temperature,
 tanner5 <- brm(tanner5_formula,
                               data = tanner.dat,
                               family =bernoulli(link = "logit"),
-                              cores = 4, chains = 4, iter = 2500,
+                              cores = 4, chains = 4, 
+                              warmup = 1500, iter = 6000,
                               save_pars = save_pars(all = TRUE),
                               control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -491,6 +496,7 @@ auc <- apply(preds, 1, function(x) {
   auc(roc)
 })
 hist(auc) #Model discriminates fairly well
+mean(auc)
 
 #Model comparison
 loo(tanner3, tanner5, moment_match = TRUE) #no improvement by adding sex, but models very similar 
@@ -514,8 +520,7 @@ rbind(bayes_R2(tanner2),
            r_square_posterior_mean = round(Estimate, digits = 2)) %>%
   select(model, r_square_posterior_mean) 
 
-#Model weights 
-  #PSIS-LOO
+#LOOIC/ELPD
 loo1 <- loo(tanner2)
 loo2 <- loo(tanner3)
 loo3 <- loo(tanner4)
@@ -617,86 +622,22 @@ tibble(idx = seq_along(k_tanner3),
   ggtitle("Pareto-k diagnostic (PSIS diagnostic)")
 
 #No influence points (all khat <0.7). One khat value > 0.5 in tanner3
+#Final model: tanner3, though all models tested are very similar
 
 ###########################
-#Final model using tanner3, though all models tested are very similar
-  
-#Final Model:  Run tanner3 model with 10,000 iterations and set seed for reproducibility 
-tannerfinal <- brm(tanner3_formula,
-               data = tanner.dat,
-               family = bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 10000,
-               save_pars = save_pars(all = TRUE), seed = 3, 
-               control = list(adapt_delta = 0.9999, max_treedepth = 14))
-
-#Save model output 
-saveRDS(tannerfinal, file = "./output/tannerfinal.rds")
-tannerfinal <- readRDS("./output/tannerfinal.rds")
-
-#MCMC convergence diagnostics 
-check_hmc_diagnostics(tannerfinal$fit)
-neff_lowest(tannerfinal$fit)
-rhat_highest(tannerfinal$fit)
-summary(tannerfinal)
-bayes_R2(tannerfinal)
-
-#Diagnostic Plots
-plot(tannerfinal, ask = FALSE)
-plot(conditional_smooths(tannerfinal), ask = FALSE)
-mcmc_plot(tannerfinal, prob = 0.95)
-mcmc_plot(tannerfinal, transformations = "inv_logit_scaled")
-mcmc_rhat(rhat(tannerfinal)) #Potential scale reduction: All rhats < 1.1
-mcmc_acf(tannerfinal, pars = c("b_Intercept", "bs_ssize_1", "bs_stemperature_1"), lags = 10) #Autocorrelation of selected parameters
-mcmc_neff(neff_ratio(tannerfinal)) #Effective sample size: All ratios > 0.1
-marginal_effects(tannerfinal, surface = TRUE) #visualize effects of predictors on the expected response
-marginal_smooths(tannerfinal) #
-hypothesis(tannerfinal, "ssize_1 < 0")
-
-#Posterior Predictive Check: Mean and skewness summary statistics 
-color_scheme_set("red")
-pmean1 <- posterior_stat_plot(y_obs, tannerfinal) + 
-  theme(legend.text = element_text(size=8), 
-        legend.title = element_text(size=8)) +
-  labs(x="Mean", title="Mean")
-
-color_scheme_set("gray")
-pskew1 <- posterior_stat_plot(y_obs,tannerfinal, statistic = "skew") +
-  theme(legend.text = element_text(size=8),
-        legend.title = element_text(size=8)) +
-  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
-
-pmean1 + pskew1
-
-#PPC: Classify posterior probabilities and compare to observed 
-preds <- posterior_epred(tannerfinal)
-pred <- colMeans(preds) #averaging across draws 
-pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
-mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy looks good
-
-# Compute AUC for predicting prevalence with the model
-y_obs <- tanner.dat$pcr
-preds <- posterior_epred(tannerfinal)
-auc <- apply(preds, 1, function(x) {
-  roc <- roc(y_obs, x, quiet = TRUE)
-  auc(roc)
-})
-hist(auc) #Looks like our model discriminates fairly well 
-
-
-################################
-#Extract and plot conditional effects of each predictor from best model
+#Extract and plot conditional effects of each predictor from tanner3 best model
   #conditioning on the mean for all other predictors, yr/site effects ignored 
 
 #Size effect plot 
-#Need to save settings from conditional effects as an object to plot in ggplot
+  #Need to save settings from conditional effects as an object to plot in ggplot
 ## 95% CI
-ce1s_1 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
+ce1s_1 <- conditional_effects(tanner3 , effect = "size", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
+ce1s_2 <- conditional_effects(tanner3 , effect = "size", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(tannerfinal , effect = "size", re_formula = NA,
+ce1s_3 <- conditional_effects(tanner3 , effect = "size", re_formula = NA,
                               probs = c(0.1, 0.9))
 
 dat_ce <- ce1s_1$size
@@ -718,13 +659,13 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
 
 ##Julian Day
 ## 95% CI
-ce1s_1 <- conditional_effects(tannerfinal , effect = "julian", re_formula = NA,
+ce1s_1 <- conditional_effects(tanner3 , effect = "julian", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(tannerfinal , effect = "julian", re_formula = NA,
+ce1s_2 <- conditional_effects(tanner3 , effect = "julian", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(tannerfinal , effect = "julian", re_formula = NA,
+ce1s_3 <- conditional_effects(tanner3 , effect = "julian", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$julian
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -740,18 +681,18 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
   geom_line(size = 1, color = "black") +
   geom_point(data = tanner.dat, aes(x = julian, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
-  labs(x = "Julian Day", y = "") +
+  labs(x = "Day of Year", y = "") +
   theme_bw() -> dayplot
   
 ##Temperature 
 ## 95% CI
-ce1s_1 <- conditional_effects(tannerfinal , effect = "temperature", re_formula = NA,
+ce1s_1 <- conditional_effects(tanner3 , effect = "temperature", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(tannerfinal , effect = "temperature", re_formula = NA,
+ce1s_2 <- conditional_effects(tanner3 , effect = "temperature", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(tannerfinal , effect = "temperature", re_formula = NA,
+ce1s_3 <- conditional_effects(tanner3 , effect = "temperature", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$temperature
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -779,7 +720,7 @@ ggsave("./figs/tannerFig6.png")
 #other values held constant
 
 #Marginal effect at the mean: julian day slope
-tannerfinal %>%
+tanner3 %>%
   emtrends(~ julian, 
            var = "julian", 
            regrid = "response")
@@ -787,7 +728,7 @@ tannerfinal %>%
 #the probability of infection
 
 #Marginal effect at various levels of julian day  
-tannerfinal %>% 
+tanner3 %>% 
   emtrends(~ julian, var = "julian",
            at = list(julian = 
                   seq(min(tanner.dat$julian), 
@@ -803,15 +744,15 @@ ggplot(aes(x = julian, y = julian.trend)) +
   theme_bw() 
 
 #Marginal effect at the mean: size 
-tannerfinal %>%
+tanner3 %>%
   emtrends(~ size, 
            var = "size", 
            regrid = "response", re_formula = NA)
-#a 1mm increase in Julian day is associated with a 1.1% increase in 
+#a 1mm increase in Julian day is associated with a 0.7% decrease in 
 #the probability of infection
 
 #Marginal effect at various size crab 
-tannerfinal %>% 
+tanner3 %>% 
   emtrends(~ size, var = "size",
            at = list(size = 
                        seq(min(tanner.dat$size), 
@@ -830,7 +771,7 @@ tannerfinal %>%
 #Generating posterior predictions for final model 
 
 #global size mean-ignoring year/site specific deviations 
-grand_mean <- tannerfinal %>% 
+grand_mean <- tanner3 %>% 
   #create dataset across a range of observed sizes sampled
   epred_draws(newdata = expand_grid(size = range(tanner.dat$size),
                                     temperature = mean(tanner.dat$temperature), 
@@ -846,7 +787,7 @@ ggplot(grand_mean, aes(x = size, y = .epred)) +
   theme(legend.position = "bottom")
 
 #average marginal effect of size: i.e. finding the slope at different sizes 
-grand_mean_ame <- tannerfinal %>% 
+grand_mean_ame <- tanner3 %>% 
   emtrends(~ size,
           var = "size",
           at = list(julian = mean(tanner.dat$julian),
@@ -865,7 +806,7 @@ ggplot(grand_mean_ame, aes(x = .value, fill = factor(size))) +
   #smaller the size, larger the marginal effect 
 
 #Average overall slope at mean size 
-tannerfinal %>% 
+tanner3 %>% 
   emtrends(~ 1,
           var = "size",
           epred = TRUE, re_formula = NA) 
@@ -873,7 +814,7 @@ tannerfinal %>%
 #####
 
 #Year-specific posterior predictions across size 
-all_years <- tannerfinal %>% 
+all_years <- tanner3 %>% 
   epred_draws(newdata = expand_grid(size = range(tanner.dat$size),
                                     temperature = mean(tanner.dat$temperature), 
                                     julian = mean(tanner.dat$julian), 
@@ -890,7 +831,7 @@ ggplot(all_years, aes(x = size, y = .epred)) +
   theme(legend.position = "bottom")
 
 #average marginal effect by year
-all_years_ame <- tannerfinal %>% 
+all_years_ame <- tanner3 %>% 
   emtrends(~ size + year,
            var = "size",
            at = list(year = levels(tanner.dat$year)),
@@ -908,86 +849,7 @@ ggplot(all_years_ame,aes(x = .value)) +
 all_years_ame %>% median_hdi()
 #Very little variation in size effect across years 
 
-############################################################
-#Lastly, to compare prob of infection amoung years, lets use best model
-  #with year as a fixed effect 
 
-## fit Tanner model
-tanner_year_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + year + (1 | index))
-
-tanner_year <- brm(tanner_year_formula,
-                   data = tanner.dat,
-                   family = bernoulli(link = "logit"),
-                   cores = 4, chains = 4, iter = 2500,
-                   save_pars = save_pars(all = TRUE),
-                   control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save output
-saveRDS(tanner_year, file = "./output/tanner_year.rds")
-tanner_year <- readRDS("./output/tanner_year.rds")
-
-#MCMC convergence diagnostics 
-check_hmc_diagnostics(tanner_year$fit)
-neff_lowest(tanner_year$fit)
-rhat_highest(tanner_year$fit)
-summary(tanner_year)
-bayes_R2(tanner_year)
-
-#Diagnostic Plots
-plot(tanner_year, ask = FALSE)
-plot(conditional_smooths(tanner_year), ask = FALSE)
-mcmc_plot(tanner_year, prob = 0.95)
-mcmc_plot(tanner_year, transformations = "inv_logit_scaled")
-mcmc_rhat(rhat(tanner_year)) #Potential scale reduction: All rhats < 1.1
-mcmc_acf(tanner_year, pars = c("b_Intercept", "bs_ssize_1", "bs_stemperature_1"), lags = 10) #Autocorrelation of selected parameters
-mcmc_neff(neff_ratio(tanner_year)) #Effective sample size: All ratios > 0.1
-marginal_effects(tanner_year, surface = TRUE) #visualize effects of predictors on the expected response
-marginal_smooths(tanner_year) #
-hypothesis(tanner_year, "year2016 < 0")
-
-#Conditional Effect 
-conditional_effects(tanner_year, effect = "year")
-
-ce1s_1 <- conditional_effects(tanner_year, effect = "year", re_formula = NA,
-                              probs = c(0.025, 0.975)) 
-ce1s_1$year %>%
-  dplyr::select(year, estimate__, lower__, upper__) %>%
-  mutate(species = "Tanner crab") -> year_tanner
-
-#Average marginal effect of year 
-years_ame <- tanner_year %>% 
-  emmeans(~ year,
-          var = "year",
-          epred = TRUE, re_formula = NA) %>% 
-  gather_emmeans_draws()
-
-ggplot(years_ame,aes(x = .value, fill=year)) +
-  stat_halfeye(slab_alpha = 0.75) +
-  labs(x = "Average marginal effect",
-       y = "Density") +
-  theme_bw()
-
-#Combine tanner/snow effects (run lines 862-902 in analyze_opilio.R first)
-dodge <- position_dodge(width=0.5) #to offset datapoints on plot 
-
-new_colors <- c("#238b45","#2171b5")
-
-year_tanner %>%
-  full_join(year_snow) %>%
-#Combined conditional effect plot 
-ggplot() +
-  geom_point(aes(year, estimate__, color=factor(species, 
-                  levels = c("Tanner crab", "Snow crab"))), size=3,
-                  position=dodge) +
-  geom_errorbar(aes(year, ymin=lower__, ymax=upper__, color=factor(species, 
-                  levels = c("Tanner crab", "Snow crab"))), width=0.3, 
-                    size=0.5, position=dodge) +
-  ylab("Probability of infection") + xlab("") +
-  scale_colour_manual(values = new_colors) +
-  theme_bw() +
-  theme(panel.grid.major.x = element_blank()) +
-  theme(legend.title= element_blank())
-  ggsave("./figs/annual_brm.png", dpi=300)
 
 
 
