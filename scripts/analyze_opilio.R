@@ -99,11 +99,6 @@ opilio.dat %>%
 cor(pca.dat.opilio[,3:7]) #Temperature, latitude, CPUE and julian day r > 0.6
 corrplot(cor(pca.dat.opilio[,3:7]), method = 'number') 
 
-#Assess the Variance Inflation Factor of each predictor 
-model <- lm(pcr ~ julian + latitude + temperature + snow70under_cpue, data=opilio.dat ) 
-summary(model) 
-vif(model) #CPUE VIF fairly low (<2.5)
-
 #Given that latitude, temp and Julian day are all intracorrelated and 
 #CPUE/temp correlation may just be spurious, let's drop CPUE from PCA and test as
 #a covariate in the Bayesian regression models 
@@ -176,7 +171,8 @@ get_prior(opilio1_formula, opilio.dat, family = bernoulli(link = "logit"))
 opilio1 <- brm(opilio1_formula,
                data = opilio.dat,
                family = bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500,
+               cores = 4, chains = 4, 
+               warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -247,7 +243,8 @@ opilio2_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + (1 | year/index
 opilio2 <- brm(opilio2_formula,
                data = opilio.dat,
                family = bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500,
+               cores = 4, chains = 4, 
+               warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -299,7 +296,8 @@ auc <- apply(preds, 1, function(x) {
   roc <- roc(y_obs, x, quiet = TRUE)
   auc(roc)
 })
-hist(auc) #Model discriminates fairly well 
+hist(auc) #Model discriminates fairly well
+mean(auc)
 
 #Final diagnostic: Correct classification rate (similar to above)
 #calculate the predicted probabilities of 0/1 in the original data from the fitted model
@@ -329,7 +327,8 @@ opilio3_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.c
 opilio3 <- brm(opilio3_formula,
                data = opilio.dat,
                family =bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500,
+               cores = 4, chains = 4, 
+               warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -379,7 +378,8 @@ auc <- apply(preds, 1, function(x) {
   roc <- roc(y_obs, x, quiet = TRUE)
   auc(roc)
 })
-hist(auc) #Model discriminates fairly well 
+hist(auc) #Model discriminates fairly well
+mean(auc)
 
 # model comparison
 loo(opilio2, opilio3) #CPUE improves predictive capacity of base model, though fairly
@@ -393,7 +393,8 @@ opilio4_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.c
 opilio4 <- brm(opilio4_formula,
                data = opilio.dat,
                family =bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500, 
+               cores = 4, chains = 4, 
+               warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -437,6 +438,7 @@ pred <- colMeans(preds) #averaging across draws
 pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
 mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy fairly good 
 
+
 # Compute AUC for predicting prevalence with the model
 preds <- posterior_epred(opilio4) #posterior draws
 auc <- apply(preds, 1, function(x) {
@@ -444,6 +446,7 @@ auc <- apply(preds, 1, function(x) {
   auc(roc)
 })
 hist(auc) #Model discriminates fairly well
+mean(auc)
 
 #Model comparison
 loo(opilio3, opilio4)  #Opilio4 marginally better, although again- models very similar 
@@ -457,7 +460,8 @@ opilio5_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.c
 opilio5 <- brm(opilio5_formula,
                data = opilio.dat,
                family =bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500, 
+               cores = 4, chains = 4, 
+               warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE),
                control = list(adapt_delta = 0.999, max_treedepth = 14))
 
@@ -508,6 +512,7 @@ auc <- apply(preds, 1, function(x) {
   auc(roc)
 })
 hist(auc) #Model discriminates fairly well
+mean(auc)
 
 #Model comparison
 loo(opilio4, opilio5)  #Opilio5 marginally better 
@@ -529,12 +534,11 @@ rbind(bayes_R2(opilio2),
          r_square_posterior_mean = round(Estimate, digits = 2)) %>%
   select(model, r_square_posterior_mean) 
 
-#Model weights 
-#PSIS-LOO
-loo2 <- loo(opilio2)
-loo3 <- loo(opilio3)
-loo4 <- loo(opilio4)
-loo5 <- loo(opilio5)
+#LOOIC/ELPD 
+loo2 <- loo(opilio2, moment_match = T)
+loo3 <- loo(opilio3, moment_match = T)
+loo4 <- loo(opilio4, moment_match = T)
+loo5 <- loo(opilio5, moment_match = T)
 
 loo_list <- list(loo2, loo3, loo4, loo5)
 
@@ -557,72 +561,13 @@ forms <- data.frame(formula=c(as.character(opilio5_formula)[1],
 comp.out <- cbind(forms, model.comp$diffs[,1:2])
 write.csv(comp.out, "./output/snow_model_comp.csv")
 
-#######################################################
-#Final Model:  Run best opilio5 model with 10,000 iterations and set seed 
-
-opiliofinal <- brm(opilio5_formula,
-                   data = opilio.dat,
-                   family = bernoulli(link = "logit"),
-                   cores = 4, chains = 4, iter = 10000,
-                   save_pars = save_pars(all = TRUE), seed = 1, 
-                   control = list(adapt_delta = 0.9999, max_treedepth = 14))
-
-#Save model output 
-saveRDS(opiliofinal, file = "./output/opiliofinal.rds")
-opiliofinal <- readRDS("./output/opiliofinal.rds")
-
-#MCMC convergence diagnostics 
-check_hmc_diagnostics(opiliofinal$fit)
-neff_lowest(opiliofinal$fit)
-rhat_highest(opiliofinal$fit)
-summary(opiliofinal)
-bayes_R2(opiliofinal)
-
-#Diagnostic Plots
-plot(opiliofinal, ask = FALSE)
-plot(conditional_smooths(opiliofinal), ask = FALSE)
-mcmc_plot(opiliofinal, type = "areas", prob = 0.95) #all credible intervals but sex contain zero 
-mcmc_rhat(rhat(opiliofinal)) #Potential scale reduction: All rhats < 1.1
-mcmc_neff(neff_ratio(opiliofinal)) #Effective sample size: All ratios > 0.1
-
-#Posterior Predictive Check: Mean and skewness summary statistics 
-y_obs <- opilio.dat$pcr #observed values
-
-color_scheme_set("red")
-pmean1 <- posterior_stat_plot(y_obs, opiliofinal) + 
-  theme(legend.text = element_text(size=8), 
-        legend.title = element_text(size=8)) +
-  labs(x="Mean", title="Mean")
-
-color_scheme_set("gray")
-pskew1 <- posterior_stat_plot(y_obs,opiliofinal, statistic = "skew") +
-  theme(legend.text = element_text(size=8),
-        legend.title = element_text(size=8)) +
-  labs(x = "Fisher-Pearson Skewness Coeff", title="Skew")
-
-pmean1 + pskew1
-
-#PPC: Classify posterior probabilities and compare to observed 
-preds <- posterior_epred(opiliofinal)
-pred <- colMeans(preds) #averaging across draws 
-pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
-mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy looks good 
-
-# Compute AUC for predicting prevalence with the model
-preds <- posterior_epred(opiliofinal) #posterior draws
-auc <- apply(preds, 1, function(x) {
-  roc <- roc(y_obs, x, quiet = TRUE)
-  auc(roc)
-})
-hist(auc) #Model discriminates fairly well 
-
 ###########################
-#Extract and plot conditional effects of each predictor from best model
+#Extract and plot conditional effects of each predictor from best model, opilio5
 #conditioning on the mean for all other predictors, yr/site effects ignored 
 
 #Sex effect plot 
 #Need to save settings from conditional effects as an object to plot in ggplot
-ce1s_1 <- conditional_effects(opiliofinal, effect = "sex", re_formula = NA,
+ce1s_1 <- conditional_effects(opilio5, effect = "sex", re_formula = NA,
                               probs = c(0.025, 0.975)) 
 ce1s_1$sex %>%
   dplyr::select(sex, estimate__, lower__, upper__) %>%
@@ -636,13 +581,13 @@ ggplot(aes(factor(sex, levels = c("Male", "Female")), estimate__)) +
 
 #Size
 ## 95% CI
-ce1s_1 <- conditional_effects(opiliofinal, effect = "size", re_formula = NA,
+ce1s_1 <- conditional_effects(opilio5, effect = "size", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(opiliofinal, effect = "size", re_formula = NA,
+ce1s_2 <- conditional_effects(opilio5, effect = "size", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(opiliofinal, effect = "size", re_formula = NA,
+ce1s_3 <- conditional_effects(opilio5, effect = "size", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$size
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -663,13 +608,13 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
 
 #Julian Day
 ## 95% CI
-ce1s_1 <- conditional_effects(opiliofinal, effect = "julian", re_formula = NA,
+ce1s_1 <- conditional_effects(opilio5, effect = "julian", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(opiliofinal, effect = "julian", re_formula = NA,
+ce1s_2 <- conditional_effects(opilio5, effect = "julian", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(opiliofinal, effect = "julian", re_formula = NA,
+ce1s_3 <- conditional_effects(opilio5, effect = "julian", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$julian
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -685,18 +630,18 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
   geom_line(size = 1, color = "black") +
   geom_point(data = opilio.dat, aes(x = julian, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
-  labs(x = "Julian Day", y = "Probability of infection") +
+  labs(x = "Day of Year", y = "Probability of infection") +
   theme_bw() -> dayplot
 
 #Depth
 ## 95% CI
-ce1s_1 <- conditional_effects(opiliofinal, effect = "depth", re_formula = NA,
+ce1s_1 <- conditional_effects(opilio5, effect = "depth", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(opiliofinal, effect = "depth", re_formula = NA,
+ce1s_2 <- conditional_effects(opilio5, effect = "depth", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(opiliofinal, effect = "depth", re_formula = NA,
+ce1s_3 <- conditional_effects(opilio5, effect = "depth", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$depth
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -717,13 +662,13 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
 
 #CPUE
 ## 95% CI
-ce1s_1 <- conditional_effects(opiliofinal, effect = "fourth.root.cpue70", re_formula = NA,
+ce1s_1 <- conditional_effects(opilio5, effect = "fourth.root.cpue70", re_formula = NA,
                               probs = c(0.025, 0.975))
 ## 90% CI
-ce1s_2 <- conditional_effects(opiliofinal, effect = "fourth.root.cpue70", re_formula = NA,
+ce1s_2 <- conditional_effects(opilio5, effect = "fourth.root.cpue70", re_formula = NA,
                               probs = c(0.05, 0.95))
 ## 80% CI
-ce1s_3 <- conditional_effects(opiliofinal, effect = "fourth.root.cpue70", re_formula = NA,
+ce1s_3 <- conditional_effects(opilio5, effect = "fourth.root.cpue70", re_formula = NA,
                               probs = c(0.1, 0.9))
 dat_ce <- ce1s_1$fourth.root.cpue70
 dat_ce[["upper_95"]] <- dat_ce[["upper__"]]
@@ -752,7 +697,7 @@ ggsave("./figs/opilioFig7.png", height=9)
   #other values held constant 
 
 #Marginal effect at the mean: julian day 
-opiliofinal %>%
+opilio5 %>%
   emtrends(~ julian, 
            var = "julian", 
            regrid = "response", re_formula = NA)
@@ -760,7 +705,7 @@ opiliofinal %>%
 #the probability of infection
 
 #Marginal effect at various levels of julian day 
-opiliofinal %>% 
+opilio5 %>% 
   emtrends(~ julian, var = "julian",
            at = list(julian = 
                        seq(min(opilio.dat$julian), 
@@ -776,14 +721,15 @@ ggplot(aes(x = julian, y = julian.trend )) +
   theme_bw() 
 
 #Marginal effect at the mean: sex
-opiliofinal %>%
+opilio5 %>%
   emmeans(~ sex, 
            var = "sex", 
            regrid = "response", re_formula = NA)
-#Females have a 9.3% increase in the probability of infection than males 
+(.350*100) - (.259*100)
+#Females have a 9.1% increase in the probability of infection than males 
 
 # Posterior predictions by sex
-grand_mean <- opiliofinal %>% 
+grand_mean <- opilio5 %>% 
   epred_draws(newdata = expand_grid(sex = c(1, 2),
                                     julian = mean(opilio.dat$julian),
                                     depth = mean(opilio.dat$depth),
@@ -803,7 +749,7 @@ ggplot(grand_mean, aes(x = .epred, y = "Grand mean", fill = sex)) +
 #Generating posterior predictions for final model 
 
 #global julian mean-ignoring year/site specific deviations 
-grand_mean <- opiliofinal %>% 
+grand_mean <- opilio5 %>% 
   #create dataset across a range of observed julian days sampled
   epred_draws(newdata = expand_grid(julian = range(opilio.dat$julian),
                                     depth = mean(opilio.dat$depth),
@@ -822,7 +768,7 @@ ggplot(grand_mean, aes(x = julian, y = .epred)) +
 
 ##########
 #Year-specific posterior predictions across day 
-all_years <- opiliofinal %>% 
+all_years <- opilio5 %>% 
   epred_draws(newdata = expand_grid(julian = range(opilio.dat$julian),
                                     depth = mean(opilio.dat$depth),
                                     size = mean(opilio.dat$size), 
@@ -841,7 +787,7 @@ ggplot(all_years, aes(x = julian, y = .epred)) +
   theme(legend.position = "bottom")
 
 #average marginal effect by year
-all_years_ame <- opiliofinal %>% 
+all_years_ame <- opilio5 %>% 
   emtrends(~ julian + year,
            var = "julian",
            at = list(year = levels(opilio.dat$year)),
@@ -859,108 +805,6 @@ ggplot(all_years_ame,aes(x = .value)) +
 all_years_ame %>% median_hdi()
 #Probability of infection varies by year 
 
-###########################################################
-#Lastly, to compare annual probability of infection, lets use best model
-#with year as a fixed effect 
-
-## fit snow model
-snow_year_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(fourth.root.cpue70, k = 4) 
-                         + sex + s(depth, k = 4) + year + (1 | index))
 
 
-snow_year <- brm(snow_year_formula,
-                   data = opilio.dat,
-                   family = bernoulli(link = "logit"),
-                   cores = 4, chains = 4, iter = 2500,
-                   save_pars = save_pars(all = TRUE),
-                   control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save output
-saveRDS(snow_year, file = "./output/snow_year.rds")
-opilio_year <- readRDS("./output/snow_year.rds")
-
-#MCMC convergence diagnostics 
-check_hmc_diagnostics(opilio_year$fit)
-neff_lowest(opilio_year$fit)
-rhat_highest(opilio_year$fit)
-summary(opilio_year)
-bayes_R2(opilio_year)
-
-#Diagnostic Plots
-plot(opilio_year, ask = FALSE)
-plot(conditional_smooths(opilio_year), ask = FALSE)
-mcmc_plot(opilio_year, prob = 0.95)
-mcmc_plot(opilio_year, transformations = "inv_logit_scaled")
-
-#Conditional Effect 
-conditional_effects(opilio_year, effect = "year")
-
-ce1s_1 <- conditional_effects(opilio_year, effect = "year", re_formula = NA,
-                              probs = c(0.025, 0.975)) 
-ce1s_1$year %>%
-  dplyr::select(year, estimate__, lower__, upper__) %>%
-  mutate(species = "Snow crab") -> year_snow
-
-#Average marginal effect of year 
-years_ame <- opilio_year %>% 
-  emmeans(~ year,
-          var = "year",
-          epred = TRUE, re_formula = NA) %>% 
-  gather_emmeans_draws()
-
-years_ame %>%
-  median_hdi()
-
-ggplot(years_ame,aes(x = .value, fill=year)) +
-  stat_halfeye(slab_alpha = 0.75) +
-  labs(x = "Average marginal effect",
-       y = "Density") +
-  theme_bw()
-
-#######################################################################
-#Additional exploratory model runs for determine base model structure
-#Model 2.5: Base model with Julian day plus temperature vrs pc1 
-
-opilio2.5_formula <-  bf(pcr ~ s(size, k = 4) + s(julian, k = 4) + s(temperature, k = 4) + (1 | year/index)) 
-
-opilio2.5 <- brm(opilio2.5_formula,
-               data = opilio.dat,
-               family = bernoulli(link = "logit"),
-               cores = 4, chains = 4, iter = 2500,
-               save_pars = save_pars(all = TRUE),
-               control = list(adapt_delta = 0.999, max_treedepth = 14))
-
-#Save output
-saveRDS(opilio2.5, file = "./output/opilio2.5.rds")
-opilio2.5 <- readRDS("./output/opilio2.5.rds")
-
-#MCMC convergence diagnostics 
-summary(opilio2.5)
-bayes_R2(opilio2.5)
-
-#Diagnostic Plots
-plot(opilio2.5, ask = FALSE)
-plot(conditional_smooths(opilio2.5), ask = FALSE)
-
-#PPC: Classify posterior probabilities and compare to observed 
-preds <- posterior_epred(opilio2.5)
-pred <- colMeans(preds) #averaging across draws 
-pr <- as.integer(pred >= 0.5) #Classify probabilities >0.5 as presence of disease 
-mean(xor(pr, as.integer(y_obs == 0))) # posterior classification accuracy fairly good 
-
-# Compute AUC for predicting prevalence with the model
-preds <- posterior_epred(opilio2.5) #posterior draws
-auc <- apply(preds, 1, function(x) {
-  roc <- roc(y_obs, x, quiet = TRUE)
-  auc(roc)
-})
-hist(auc) #Model discriminates fairly well 
-
-# model comparison
-loo(opilio2, opilio2.5) #Not much difference, though looks like temp slightly improves predictive accuracy
-
-#Smooths of Julian vrs Julian with temp
-plot(conditional_smooths(opilio2, effects = "pc1"), ask=FALSE)
-plot(conditional_smooths(opilio2.5, effects = "julian"), ask=FALSE)
-#Julian day smooths look very similar, i.e. We're not losing much by dropping temperature 
 
