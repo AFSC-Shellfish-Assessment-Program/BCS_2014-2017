@@ -132,6 +132,23 @@ ce_snow_pcr = brms::conditional_effects(bin_snow_pcr, effect = "year")
 ce_snow_pcr$year  ## almost identical to previous model!!
 
 
+## Compare estimated and raw prevalence from each dataset
+library(data.table)
+prev.snow.dt = as.data.table(prev.snow)
+prev1 = prev.snow.dt[ , .(prev = sum(n_pos) / sum(n_total)), by = .(year)]
+prev1_est = ce_snow$year
+
+opilio.dat.dt = as.data.table(opilio.dat)
+prev2 = opilio.dat.dt[ , .(prev = sum(pcr) / .N), by = .(year)]
+prev2_est = ce_snow_pcr$year
+
+data.frame(year = 2015:2017,
+           prev_prop_raw = prev1$prev,
+           prev_prop_est = prev1_est$estimate__,
+           prev_cnt_raw = prev2$prev,
+           prev_cnt_est = prev2_est$estimate__)
+
+
 ## Tanner crab ---------------------------------------------
 dat %>%
   mutate(julian=yday(parse_date_time(start_date, "mdy", "US/Alaska"))) %>%  #add julian date
