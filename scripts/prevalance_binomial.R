@@ -67,9 +67,10 @@ bin_snow = brm(n_pos | trials(n_total) ~ year, #each row i.e. station is a singl
                cores = 4, chains = 4, 
                warmup = 1500, iter = 6000,
                save_pars = save_pars(all = TRUE))
-saveRDS(bin_snow, file = "./output/bin_snow.rds")
 
+saveRDS(bin_snow, file = "./output/bin_snow.rds")
 bin_snow = readRDS("./output/bin_snow.rds")
+
 summary(bin_snow)
 pp_check(bin_snow, type = "dens_overlay", ndraws = 100)
 check_hmc_diagnostics(bin_snow$fit)
@@ -130,6 +131,7 @@ bin_snow_pcr = readRDS("./output/bin_snow_pcr.rds")
 pp_check(bin_snow_pcr, type = "dens_overlay", ndraws = 100)
 ce_snow_pcr = brms::conditional_effects(bin_snow_pcr, effect = "year")
 ce_snow_pcr$year  ## almost identical to previous model!!
+bayes_R2(bin_snow_pcr)
 
 
 ## Compare estimated and raw prevalence from each dataset
@@ -147,7 +149,7 @@ data.frame(year = 2015:2017,
            prev_prop_est = prev1_est$estimate__,
            prev_cnt_raw = prev2$prev,
            prev_cnt_est = prev2_est$estimate__)
-
+#model estimates closely match prevalence values calculated from the raw data
 
 ## Tanner crab ---------------------------------------------
 dat %>%
@@ -202,9 +204,10 @@ bin_tanner = brm(n_pos | trials(n_total) ~ year,
                  cores = 4, chains = 4, 
                  warmup = 1500, iter = 6000,
                  save_pars = save_pars(all = TRUE))
-saveRDS(bin_tanner, file = "./output/bin_tanner.rds")
 
+saveRDS(bin_tanner, file = "./output/bin_tanner.rds")
 bin_tanner = readRDS("./output/bin_tanner.rds")
+
 summary(bin_tanner)
 pp_check(bin_tanner, type = "dens_overlay", ndraws = 100)
 check_hmc_diagnostics(bin_tanner$fit)
@@ -283,6 +286,7 @@ g = ggplot(df_year) +
     scale_colour_manual(values = new_colors) +
     theme_bw() +
     theme(panel.grid.major.x = element_blank()) +
-    theme(legend.title = element_blank())
+    theme(legend.title = element_blank()) +
+    theme(axis.text.x = element_text(size=11))
 print(g)
-ggsave("./figs/Fig5_annual_binomial.png", width = 4, height = 3, dpi = 300)
+ggsave("./figs/Fig5_annual_binomial.png", width = 5, height = 3, dpi = 300)

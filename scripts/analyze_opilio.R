@@ -574,10 +574,11 @@ ce1s_1$sex %>%
   mutate(sex = case_when(sex == 1 ~ "Male",
                          sex == 2 ~ "Female")) %>%
 ggplot(aes(factor(sex, levels = c("Male", "Female")), estimate__)) +
-  geom_point(size=3) +
-  geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5) +
+  geom_point(size=3.5, color="black") +
+  geom_errorbar(aes(ymin=lower__, ymax=upper__), width=0.3, size=0.5, color="grey60") +
   labs(y="Probability of infection", x="") +
-  theme_bw() -> sexplot
+  theme_bw() +
+  theme(axis.text.x = element_text(size=12))  -> sexplot
 
 #Size
 ## 95% CI
@@ -689,7 +690,9 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
 
 #Combine plots for Fig 7 of MS
 (sexplot + sizeplot) / (dayplot + depthplot) / (cpueplot + plot_spacer()) +
-  plot_annotation(tag_levels = 'a')
+  plot_annotation(title = "Snow Crab", 
+                  tag_levels = 'a',
+                  theme = theme(plot.title = element_text(hjust = 0.5)))
 ggsave("./figs/opilioFig7.png", height=9)
 
 ###################################

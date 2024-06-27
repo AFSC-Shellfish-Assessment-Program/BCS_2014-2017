@@ -649,9 +649,9 @@ dat_ce[["upper_80"]] <- ce1s_3$size[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$size[["lower__"]]
 
 ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#EDF8E9") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#C7E9C0") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#A1D99B") + 
   geom_line(size = 1, color = "black") +
   geom_point(data = tanner.dat, aes(x = size, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
   labs(x = "Carapace width (mm)", y = "Probability of infection") +
@@ -676,9 +676,9 @@ dat_ce[["upper_80"]] <- ce1s_3$julian[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$julian[["lower__"]]
 
 ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#EDF8E9") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#C7E9C0") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#A1D99B") + 
   geom_line(size = 1, color = "black") +
   geom_point(data = tanner.dat, aes(x = julian, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
   labs(x = "Day of Year", y = "") +
@@ -703,16 +703,18 @@ dat_ce[["upper_80"]] <- ce1s_3$temperature[["upper__"]]
 dat_ce[["lower_80"]] <- ce1s_3$temperature[["lower__"]]
 
 ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
-  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#F7FBFF") +
-  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#DEEBF7") +
-  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
+  geom_ribbon(aes(ymin = lower_95, ymax = upper_95), fill = "#EDF8E9") +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), fill = "#C7E9C0") +
+  geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#A1D99B") + 
   geom_line(size = 1, color = "black") +
   geom_point(data = tanner.dat, aes(x = temperature, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
   labs(x = "Temperature (C)", y = "") +
   theme_bw() -> tempplot
 
 #Combine plots for Fig 6 of MS
-sizeplot + dayplot + tempplot + plot_annotation(tag_levels = 'a')
+sizeplot + dayplot + tempplot + plot_annotation(title = "Tanner Crab", 
+                                      tag_levels = 'a',
+                                      theme = theme(plot.title = element_text(hjust = 0.5)))
 ggsave("./figs/tannerFig6.png")
   
 #####################################################
