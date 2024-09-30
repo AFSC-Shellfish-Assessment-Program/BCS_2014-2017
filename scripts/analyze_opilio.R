@@ -116,11 +116,12 @@ pca.dat.opilio %>%
   facet_wrap(~variable, scales = "free_y", ncol = 1) +
   geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = T, alpha = 0.2, 
               color = "black", lwd = 0.3) +
-  scale_color_manual(values = my_colors) +
-  theme_bw() +
+ theme_bw() +
   theme(legend.title = element_blank()) +
   theme(axis.title.y = element_blank()) +
-  labs(x= "Day of Year") -> snow_plot
+  labs(x= "Day of Year") +
+  ggtitle("Snow Crab") +
+  theme(plot.title = element_text(hjust = 0.5))-> snow_plot
 #See analyze_tanner.R script to combine plots for Fig 2 of ms
 
 #Dimension reduction for temp/lat/day using PCA
@@ -658,7 +659,7 @@ ggplot(dat_ce, aes(x = effect1__, y = estimate__)) +
   geom_ribbon(aes(ymin = lower_80, ymax = upper_80), fill = "#C6DBEF") + 
   geom_line(size = 1, color = "black") +
   geom_point(data = opilio.dat, aes(x = depth, y = pcr), colour = "grey80", shape= 73, size = 2) + #raw data
-  labs(x = "Depth (m)", y = "Probability of infection") +
+  labs(x = "Depth (m)", y = "") +
   theme_bw() -> depthplot
 
 #CPUE

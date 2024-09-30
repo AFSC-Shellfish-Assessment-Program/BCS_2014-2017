@@ -106,7 +106,6 @@ pca.dat %>%
   pivot_longer(4:7, names_to = "variable", values_to = "data") %>% 
 ggplot(aes(julian, data)) +
   geom_point(aes(color = as.factor(year))) +
-  scale_color_manual(values = my_colors) +
   facet_wrap(~variable, scales = "free_y", ncol = 1) +
   geom_smooth(method = "gam", formula = y ~ s(x, k = 3), se = T, alpha = 0.2, 
               color = "black", lwd = 0.3) +
@@ -114,7 +113,9 @@ ggplot(aes(julian, data)) +
   theme_bw() +
   theme(axis.title.y = element_blank()) +
   theme(legend.position="none") +
-  labs(x= "Day of Year") -> tanner_plot
+  labs(x= "Day of Year") +
+  ggtitle("Tanner Crab") +
+  theme(plot.title = element_text(hjust = 0.5)) -> tanner_plot
 
 #Combine plots for Fig 2 of ms (run "analyze_opilio.R" lines 1-124 first)
 tanner_plot + snow_plot + plot_annotation(tag_levels = 'a')
