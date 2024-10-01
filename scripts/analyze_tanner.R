@@ -24,6 +24,7 @@ library(RColorBrewer)
 library(knitr)
 library(loo)
 library(sjPlot)
+library(car)
 source("./scripts/stan_utils.R")
 
 # load PCR data 
@@ -96,6 +97,10 @@ tanner.dat %>%
 
 cor(pca.dat[,3:7]) # depth, longitude and julian day highly correlated
 corrplot(cor(pca.dat[,3:7]), method = 'number') 
+
+#Assess Variance Inflation factor
+test.mod <- glm(pcr ~ julian+depth+longitude+temperature+fourth.root.cpue70, data = tanner.dat, family = "binomial")
+vif(test.mod)
 
 #Plot 
 pca.dat %>%

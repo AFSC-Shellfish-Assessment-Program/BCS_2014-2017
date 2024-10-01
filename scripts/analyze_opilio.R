@@ -99,6 +99,10 @@ opilio.dat %>%
 cor(pca.dat.opilio[,3:7]) #Temperature, latitude, CPUE and julian day r > 0.6
 corrplot(cor(pca.dat.opilio[,3:7]), method = 'number') 
 
+#Assess Variance Inflation factor
+test.mod <- glm(pcr ~ julian+depth+latitude+temperature+fourth.root.cpue70, data = opilio.dat, family = "binomial")
+vif(test.mod)
+
 #Given that latitude, temp and Julian day are all intracorrelated and 
 #CPUE/temp correlation may just be spurious, let's drop CPUE from PCA and test as
 #a covariate in the Bayesian regression models 
