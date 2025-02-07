@@ -279,7 +279,7 @@ dodge = position_dodge(width = 0.5) ## to offset datapoints on plot
 new_colors = c("#2171b5", "#238b45")
 
 g = ggplot(df_year) +
-    geom_point(aes(year, estimate__ * 100, color = species), size = 3, position = dodge) +
+    geom_point(aes(year, estimate__ * 100, color = species, shape = species), size = 3, position = dodge) +
     geom_errorbar(aes(year, ymin = lower__ * 100, ymax = upper__ * 100, color = species),
                   width = 0.3, size = 0.5, position = dodge) +
     ylab("Prevalance (%)") + xlab("") +

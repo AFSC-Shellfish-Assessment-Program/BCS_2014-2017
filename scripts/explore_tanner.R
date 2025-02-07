@@ -13,6 +13,7 @@ dat <- read.csv("./data/pcr_haul_master.csv")
 
 #colors
 my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[c(3,7)]
+my_colors2 <- c("#3594cc","#c99b38", "#8cc5e3","#eddca5")
 
 ##########################################################
 #Quick data exploration with full snow/tanner dataset
@@ -184,7 +185,7 @@ dat %>%
   group_by(species, year, index_site) %>%
   ggplot() +
   geom_density(aes(x=size, fill=Sex), position = "stack", alpha=.6) +
-  scale_fill_manual(values=my_colors) +
+  scale_fill_manual(values=my_colors2) +
   facet_grid(species~year) +
   theme_bw() +
   xlim(0, NA) +

@@ -13,7 +13,8 @@ library(lubridate)
 dat <- read.csv("./data/pcr_haul_master.csv")
 
 #Load color palette
-my_colors <- RColorBrewer::brewer.pal(7, "GnBu")[4:7]
+my_colors <- c("#8fd7d7","#01665e", "#c99b38", "#eddca5")
+my_colors2 <- c("#3594cc", "#8cc5e3","#c99b38", "#eddca5")
 
 ############################################
 #Sample sizes
@@ -162,7 +163,7 @@ total %>%
   ggplot(aes(Diagnosis, Percent, fill=Classification)) +
     geom_bar(position = "stack", stat="identity") +
     theme_bw() +
-    scale_fill_manual(values = my_colors) +
+    scale_fill_manual(values = my_colors2) +
     facet_wrap(~factor(Test, levels=c("All Samples", "June-July Samples", "July-Aug Samples")))
 ggsave("./figs/sens_spec.png", width=7)
 
