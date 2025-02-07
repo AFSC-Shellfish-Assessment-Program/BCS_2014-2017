@@ -1,5 +1,5 @@
 # Bitter crab disease dynamics in eastern Bering Sea Tanner and snow crab
-Data and analyses for "Bitter crab disease dynamics in eastern Bering Sea Tanner and snow crab: An underestimated and emergent stressor". This dataset includes Tanner and snow crab sampled for hemolymph in established bitter crab disease monitoring sites on 2014 - 2017 EBS bottom trawl surveys. Infection status was determined via species-specific PCR assays. 2014 data was eliminated from all analyses due to concerns with DNA extraction from leg muscle tissue instead of hemolymph (2015-2017 at-sea protocol change). 
+Data and analyses for "Bitter crab disease dynamics in eastern Bering Sea Tanner and snow crab: An underestimated and emergent stressor" (Fedewa et al., 2025). This dataset includes Tanner and snow crab sampled for hemolymph in established bitter crab disease monitoring sites on 2014 - 2017 EBS bottom trawl surveys. Infection status was determined via species-specific PCR assays. 2014 data was eliminated from all analyses due to concerns with DNA extraction from leg muscle tissue instead of hemolymph (2015-2017 at-sea protocol change). 
 
 # Project PIs: 
 Erin Fedewa, Pam Jensen, Hamish Small, Michael Litzow, Michael Malick, Leah Zacher, Chris Long, and Stan Kotwicki
